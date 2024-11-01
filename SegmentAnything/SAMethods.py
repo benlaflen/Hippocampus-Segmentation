@@ -81,7 +81,3 @@ class SAM_Image:
         plt.title(f"Masks", fontsize=18)
         plt.axis('off')
         plt.show() 
-
-im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s1.png', **recommended_kwargs)
-masks, scores, logits = im.get_best_mask([[6000, 3600], [6000, 2500], [6000, 4000]], [1, 0, 0])
-im.display_masks(masks, scores)
