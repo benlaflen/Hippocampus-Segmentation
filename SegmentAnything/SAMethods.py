@@ -35,6 +35,11 @@ def show_points(coords, labels, ax, marker_size=100):
     ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='o', s=marker_size, edgecolor='white', linewidth=1.25)
     ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='o', s=marker_size, edgecolor='white', linewidth=1.25) 
 
+def show_box(box, ax):
+    x0, y0 = box[0], box[1]
+    w, h = box[2] - box[0], box[3] - box[1]
+    ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2))  
+
 class SAM_Image:
     def __init__(self, image_path, sam_checkpoint, model_type, device):
         self.image = cv2.imread(image_path)
@@ -79,16 +84,20 @@ class SAM_Image:
             multimask_output=False,
         )
 
-    def display_masks(self, masks, scores, points=None, labels=None):
+    def display(self, masks=None, scores=None, points=None, labels=None, boxes=None):
         points = np.array(points) if points != None else None
         labels = np.array(labels) if labels != None else None
         plt.figure(figsize=(10,10))
         plt.imshow(self.image)
-        for i,mask in enumerate(reversed(masks)):
-            show_mask(mask, plt.gca(), color=colors[i % len(colors)])
+        if masks is not None:
+            for i,mask in enumerate(reversed(masks)):
+                show_mask(mask, plt.gca(), color=colors[i % len(colors)])
         if points is not None and labels is not None:
             for i in range(len(points)):
                 show_points(points[i], labels[i], plt.gca())
+        if boxes is not None:
+            for i,box in enumerate(boxes):
+                show_box(box, plt.gca())
         plt.title(f"Masks", fontsize=18)
         plt.axis('off')
         plt.show() 
