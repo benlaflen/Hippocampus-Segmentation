@@ -1,6 +1,6 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
-im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s3.tif', **recommended_kwargs)
+im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s1.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -16,7 +16,7 @@ def get_mask_bounds(mask):
 #masks, scores, logits = im.get_best_mask([[6000, 3600], [6000, 3200], [6000, 2500], [6000, 4000]], [1, 1, 0, 0])
 #im.display_masks(masks, scores)
 
-points = [[8500, 3500]]
+points = [[8500, 4000]]
 labels = [1]
 masks, scores, logits = im.get_best_mask(points, labels)
 vent_x,vent_y = get_mask_center(masks[0])
@@ -36,4 +36,4 @@ vent_box = get_mask_bounds(masks[0])
 # labels = [1]
 x_min, y_min, x_max, y_max = vent_box
 boxes = [[x_min, y_min, x_max, y_max]]
-im.display(labels=labels, boxes=boxes)
+im.display(points=points, labels=labels, boxes=boxes)
