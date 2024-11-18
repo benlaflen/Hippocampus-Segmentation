@@ -16,7 +16,6 @@ def get_mask_bounds(mask):
 #masks, scores, logits = im.get_best_mask([[6000, 3600], [6000, 3200], [6000, 2500], [6000, 4000]], [1, 1, 0, 0])
 #im.display_masks(masks, scores)
 
-#Collects the shape and height of the generated image to find the center point
 height, width = im.image.shape[:2]
 center_x, center_y = width // 2, height // 2
 box_width, box_height = 5000, 6000
