@@ -1,7 +1,8 @@
+import math
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 from scipy.signal import argrelextrema
-im = SAM_Image(r'Cage5195087-Mouse3RL\\NeuN-s2.tif', **recommended_kwargs)
+im = SAM_Image(r'Cage5195087-Mouse3RL\\NeuN-s3.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -52,11 +53,14 @@ def get_verticle_maxima(target_x, image, disp=False):
 #masks, scores, logits = im.get_best_mask([[6000, 3600], [6000, 3200], [6000, 2500], [6000, 4000]], [1, 1, 0, 0])
 #im.display_masks(masks, scores)
 
+def PointDist(p1, p2):
+    return math.sqrt((p1[0]-p2[0])**2+(p1[1]-p2[1])**2)
+def PointAngle(p1, p2, p3):
+    return math.atan2(p3[1] - p1[1], p3[0] - p1[0]) - math.atan2(p2[1] - p1[1], p2[0] - p1[0])
 #Scan to the left of the ventricle
 def get_left_GCL(im, vent_box, display_maxes=False):
     scan = []
     store_points = []
-    store_labels = []
     step = 160
     for x in range(step):
         target_x = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
@@ -64,20 +68,71 @@ def get_left_GCL(im, vent_box, display_maxes=False):
         scan.append(maximums)
         for y in maximums:
             store_points.append([target_x, y])
-            store_labels.append(1)
 
+    edges = []
+    #Detect Lines
+    for x,first in enumerate(store_points):
+        NN = None
+        dist = -1
+        for y,second in enumerate(store_points):
+            thist = PointDist(first, second)
+            if x == y:
+                continue
+            if NN == None:
+                NN = second
+                dist = thist
+            elif thist < dist:
+                NN = second
+                dist = thist
+        edges.append((first, NN))
+        SN = None
+        dist = -1
+        for y,second in enumerate(store_points):
+            thist = PointDist(first, second)
+            if x == y:
+                continue
+            thangle = PointAngle(first, second, NN)
+            if thangle < math.pi/2:
+                continue
+            if SN == None:
+                SN = second
+                dist = thist
+            elif thist < dist:
+                SN = second
+                dist = thist
+        if SN != None:
+            edges.append((first, SN))
+    edge_distances = np.array([PointDist(x[0], x[1]) for x in edges])
+    max_length = np.quantile(edge_distances, 0.75) + 1.5*(np.quantile(edge_distances, 0.75)-np.quantile(edge_distances, 0.25))
+    index = 0
+    while(index < len(edges)):
+        if PointDist(edges[index][0], edges[index][1]) > max_length or (edges[index][1], edges[index][0]) not in edges:
+            del edges[index]
+        else:
+            index += 1
+   # plt.figure(figsize=(10,10))
+    #for edge in edges:
+   #     plt.plot([edge[0][0], edge[1][0]], [-edge[0][1], -edge[1][1]] )
+   # plt.show()
+
+    timeout = -1
+    points = []
+    labels = []
     for x in range(len(scan)):
+        timeout -= 1
+        if timeout == 0:
+            break
         if len(scan[x]) == 3 and len(scan[x-1]) == 3 and len(scan[x+1]) == 3 and (scan[x][2]-scan[x][1]) < (scan[x][1]-scan[x][0]) and [(abs(scan[x][y]-scan[x-1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)] and [(abs(scan[x][y]-scan[x+1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)]:
             off = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
-            points = [
+            timeout = 1#int(-0.75*timeout)
+            points += [
                 [off, scan[x][1]],
                 [off, scan[x][2]],
                 [off, (scan[x][1]+scan[x][2])/2],
                 [off, scan[x][1]-(scan[x][2]-scan[x][1])],
                 [off, scan[x][2]+(scan[x][2]-scan[x][1])]
             ]
-            labels = [1, 1, 0, 0, 0]
-            break
+            labels += [1, 1, 0, 0, 0]
     masks, scores, logits = im.get_best_mask(points, labels)
 
     print(scores)
