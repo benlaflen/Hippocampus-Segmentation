@@ -1,6 +1,6 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
-im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s2.tif', **recommended_kwargs)
+im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s1.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -27,9 +27,9 @@ points = [[int(vent_box[0]*0.75), 3500]]
 im.display(points=points, labels=labels)
 
 #Scan to the left of the ventricle
-# target_x = int(vent_box[0]*0.75)
-# print(target_x)
-# target_column = im.image[:, target_x]
-# brightness = np.mean(target_column, 1)
-# plt.plot(brightness)
-# plt.show()
+target_x = int(vent_box[0]*0.75)
+print(target_x)
+target_column = im.image[:, target_x]
+brightness = np.mean(target_column, 1)
+plt.plot(brightness)
+plt.show()
