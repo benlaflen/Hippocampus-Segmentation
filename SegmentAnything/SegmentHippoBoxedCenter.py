@@ -1,6 +1,6 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
-im = SAM_Image('Cage5195087-Mouse3RL\\NeuN-s3.tif', **recommended_kwargs)
+im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
