@@ -2,7 +2,7 @@ import math
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 from scipy.signal import argrelextrema
-im = SAM_Image(r'Cage5195087-Mouse3RL\\NeuN-s3.tif', **recommended_kwargs)
+im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -57,8 +57,7 @@ def PointDist(p1, p2):
     return math.sqrt((p1[0]-p2[0])**2+(p1[1]-p2[1])**2)
 def PointAngle(p1, p2, p3):
     return math.atan2(p3[1] - p1[1], p3[0] - p1[0]) - math.atan2(p2[1] - p1[1], p2[0] - p1[0])
-#Scan to the left of the ventricle
-def get_left_GCL(im, vent_box, display_maxes=False):
+def get_bright_lines(im, vent_box, display_maxes=False):
     scan = []
     store_points = []
     step = 160
@@ -110,21 +109,31 @@ def get_left_GCL(im, vent_box, display_maxes=False):
             del edges[index]
         else:
             index += 1
-   # plt.figure(figsize=(10,10))
-    #for edge in edges:
-   #     plt.plot([edge[0][0], edge[1][0]], [-edge[0][1], -edge[1][1]] )
-   # plt.show()
+    plt.figure(figsize=(10,10))
+    for edge in edges:
+        plt.plot([edge[0][0], edge[1][0]], [-edge[0][1], -edge[1][1]] )
+    plt.show()
 
-    timeout = -1
+def get_left_GCL(im, vent_box, display_maxes=False):
+    scan = []
+    store_points = []
+    labels = []
+    step = 160
+    for x in range(step):
+        target_x = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
+        maximums = get_verticle_maxima(target_x, im)
+        scan.append(maximums)
+        for y in maximums:
+            store_points.append([target_x, y])
+            labels.append(1)
+    if display_maxes:
+        im.display(points=store_points, labels=labels)
     points = []
     labels = []
+    scores = []
     for x in range(len(scan)):
-        timeout -= 1
-        if timeout == 0:
-            break
         if len(scan[x]) == 3 and len(scan[x-1]) == 3 and len(scan[x+1]) == 3 and (scan[x][2]-scan[x][1]) < (scan[x][1]-scan[x][0]) and [(abs(scan[x][y]-scan[x-1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)] and [(abs(scan[x][y]-scan[x+1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)]:
             off = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
-            timeout = 1#int(-0.75*timeout)
             points += [
                 [off, scan[x][1]],
                 [off, scan[x][2]],
@@ -133,21 +142,77 @@ def get_left_GCL(im, vent_box, display_maxes=False):
                 [off, scan[x][2]+(scan[x][2]-scan[x][1])]
             ]
             labels += [1, 1, 0, 0, 0]
-    masks, scores, logits = im.get_best_mask(points, labels)
+            masks, scores, logits = im.get_best_mask(points, labels)
+            if scores > 0.85:
+                break
 
-    print(scores)
-    if display_maxes:
-        for x in range(len(store_points)):
-            points.append(store_points[x])
+    if scores is [] or scores[0] < 0.85:
+        print("No Left GCL Detected!")
+        return None
+    else:
+        print("Left GCL detected with accuracy: " + str(scores[0]))
+        if display_maxes:
+            for x in range(len(store_points)):
+                points.append(store_points[x])
+                labels.append(1)
+        #im.display(masks=masks, points=points, labels=labels)
+        return masks[0]
+
+def get_right_GCL(im, vent_box, display_maxes=False):
+    scan = []
+    store_points = []
+    labels = []
+    step = 160
+    for x in range(step):
+        target_x = int(vent_box[2]+((0.2+((0.6/step)*x))*(im.image.shape[1] - vent_box[2])))
+        maximums = get_verticle_maxima(target_x, im)
+        scan.append(maximums)
+        for y in maximums:
+            store_points.append([target_x, y])
             labels.append(1)
-    im.display(masks=masks, points=points, labels=labels)
+    if display_maxes:
+        im.display(points=store_points, labels=labels)
+    points = []
+    labels = []
+    scores = []
+    for x in range(len(scan)):
+        if len(scan[x]) == 3 and len(scan[x-1]) == 3 and len(scan[x+1]) == 3 and (scan[x][2]-scan[x][1]) < (scan[x][1]-scan[x][0]) and [(abs(scan[x][y]-scan[x-1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)] and [(abs(scan[x][y]-scan[x+1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)]:
+            off = int(vent_box[2]+((0.2+((0.6/step)*x))*(im.image.shape[1] - vent_box[2])))
+            points += [
+                [off, scan[x][1]],
+                [off, scan[x][2]],
+                [off, (scan[x][1]+scan[x][2])/2],
+                [off, scan[x][1]-(scan[x][2]-scan[x][1])],
+                [off, scan[x][2]+(scan[x][2]-scan[x][1])]
+            ]
+            labels += [1, 1, 0, 0, 0]
+            masks, scores, logits = im.get_best_mask(points, labels)
+            if scores > 0.8:
+                break
+
+    if scores is [] or scores[0] < 0.85:
+        print("No Right GCL Detected!")
+        return None
+    else:
+        print("Right GCL detected with accuracy: " + str(scores[0]))
+        if display_maxes:
+            for x in range(len(store_points)):
+                points.append(store_points[x])
+                labels.append(1)
+        #im.display(masks=masks, points=points, labels=labels)
+        return masks[0]
 
 #Get central ventricle
-points = [[10000, 2700]]
-labels = [1]
+points = [[8000, 3500], [9500, 3500]]
+labels = [1, 1]
 masks, scores, logits = im.get_best_mask(points, labels)
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
-points = [[int(vent_box[0]*0.5), int((vent_box[1]+vent_box[3])/2)]]
-get_left_GCL(im, vent_box, False)
-#get_verticle_maxima(4132, im, True)
+left_gcl = get_left_GCL(im, vent_box, False)
+right_gcl = get_right_GCL(im, vent_box, False)
+masks = []
+if left_gcl is not None:
+    masks.append(left_gcl)
+if right_gcl is not None:
+    masks.append(right_gcl)
+im.display(masks=masks, boxes=[vent_box], points=points, labels=labels)
