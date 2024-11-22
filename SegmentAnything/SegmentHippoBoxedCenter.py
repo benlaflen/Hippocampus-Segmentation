@@ -1,7 +1,10 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 import cv2
-im = SAM_Image(r'Cage5195087-Mouse3RL\\NeuN-s1.tif', **recommended_kwargs)
+path = 'Cage4841876-Mouse3RL\\s1-NeuN.tif'
+#D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
+#D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
+im = SAM_Image(path, **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -17,40 +20,41 @@ def get_mask_bounds(mask):
 #masks, scores, logits = im.get_best_mask([[6000, 3600], [6000, 3200], [6000, 2500], [6000, 4000]], [1, 1, 0, 0])
 #im.display_masks(masks, scores)
 
-#Collects the shape and height of the generated image to find the center point
-# height, width = im.image.shape[:2]
-# center_x, center_y = width // 2, height // 2
-# box_width, box_height = 5000, 6000
-# x_min = center_x - box_width // 2
-# y_min = center_y - box_height // 2
-# x_max = center_x + box_width // 2 -800 #center ventrical tends to shift left on image
-# y_max = center_y + box_height // 2
-# boxes = [[x_min, y_min, x_max, y_max]]
-# points = [[center_x, center_y]]
-# labels = [1]
-# im.display(labels=labels, boxes=boxes)
-image = cv2.imread('Cage5195087-Mouse3RL\\NeuN-s2.tif', cv2.IMREAD_GRAYSCALE)
-height, width = image.shape
-start_x = width // 3
-end_x = 2 * (width // 3)
-start_y = height // 3
-end_y = 2 * (height // 3)
-center_image = image[start_y:end_y, start_x:end_x]
-_, binary_image = cv2.threshold(center_image, 1, 255, cv2.THRESH_BINARY_INV)
-transformed_dist = cv2.distanceTransform(center_image, cv2.DIST_L2, 5)
+image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+_, binary_image = cv2.threshold(image, 175, 225, cv2.THRESH_BINARY_INV)
 
-min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(transformed_dist)
+height, width = binary_image.shape
+center_fraction = 2
+start_x = width // center_fraction
+end_x = width - width // center_fraction
+start_y = height // center_fraction
+end_y = height - height // center_fraction
 
-widest_black_point = (max_loc[0] + start_x, max_loc[1] + start_y)
-print(f"Widest black point located at: {widest_black_point}")
-center_x, center_y = widest_black_point[0], widest_black_point[1]
+start_x-=400
+end_x-=400
+start_y+=400
+end_y+=400
+
+center_binary = binary_image[start_y:end_y, start_x:end_x]
+
+distance_transform = cv2.distanceTransform(center_binary, cv2.DIST_L2, 5)
+
+min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(distance_transform)
+
+center_ventricle = (max_loc[0] + start_x, max_loc[1] + start_y)
+
+#TEST INV IMAGE 
+# plt.figure(figsize=(10, 6))
+# plt.imshow(binary_image, cmap='gray')
+# plt.scatter(center_ventricle[0], center_ventricle[1], color='red', s=100, label='Center Ventricle')
+# plt.title('Center Ventricle Identified')
+# plt.axis('off')
+# plt.legend()
+# plt.show()
+
+print(f"Widest black point located at: {center_ventricle}")
+center_x, center_y = center_ventricle
 #print(f"Maximum distance: {center_x}")
-marked_image = image.copy()  # Create a copy to mark the point
-cv2.circle(marked_image, widest_black_point, 5, (255, 0, 0), 2)  # Blue circle (255, 0, 0)
-    
-# points = [[center_x, center_y]]
-# labels = [1]
-# im.display(labels=labels, points=points)
-cv2.imshow("Marked Image", marked_image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+points = [[center_x, center_y]]
+labels = [1]
+im.display(labels=labels, points=points)
