@@ -1,7 +1,7 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 import cv2
-path = 'Cage4841876-Mouse3RL\\s1-NeuN.tif'
+path = 'Cage5195087-Mouse3RL\\NeuN-s2.tif'
 #D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
 #D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
 im = SAM_Image(path, **recommended_kwargs)
@@ -21,22 +21,25 @@ def get_mask_bounds(mask):
 #im.display_masks(masks, scores)
 
 image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-_, binary_image = cv2.threshold(image, 175, 225, cv2.THRESH_BINARY_INV)
+# plt.figure(figsize=(10,10))
+# plt.imshow(image)
+# plt.show() 
+_, binary_image = cv2.threshold(image, 25, 225, cv2.THRESH_BINARY_INV)
 
 height, width = binary_image.shape
-center_fraction = 2
+center_fraction = 3
 start_x = width // center_fraction
 end_x = width - width // center_fraction
 start_y = height // center_fraction
 end_y = height - height // center_fraction
 
-start_x-=400
-end_x-=400
-start_y+=400
-end_y+=400
+#Adjusting the bounding box to better encompass the center
+# start_x-=200
+# end_x-=200
+# start_y+=400
+# end_y+=400
 
 center_binary = binary_image[start_y:end_y, start_x:end_x]
-
 distance_transform = cv2.distanceTransform(center_binary, cv2.DIST_L2, 5)
 
 min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(distance_transform)
@@ -54,7 +57,7 @@ center_ventricle = (max_loc[0] + start_x, max_loc[1] + start_y)
 
 print(f"Widest black point located at: {center_ventricle}")
 center_x, center_y = center_ventricle
-#print(f"Maximum distance: {center_x}")
 points = [[center_x, center_y]]
 labels = [1]
-im.display(labels=labels, points=points)
+masks, scores, logits = im.get_best_mask(points, labels)
+im.display(masks=masks, labels=labels, points=points)
