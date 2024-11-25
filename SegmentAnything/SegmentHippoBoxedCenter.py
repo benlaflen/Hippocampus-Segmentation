@@ -1,7 +1,7 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 import cv2
-path = 'Cage5195087-Mouse3RL\\NeuN-s2.tif'
+path = 'Cage5195087-Mouse3RL\\NeuN-s1.tif'
 #D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
 #D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
 im = SAM_Image(path, **recommended_kwargs)
@@ -24,7 +24,7 @@ image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
 # plt.figure(figsize=(10,10))
 # plt.imshow(image)
 # plt.show() 
-_, binary_image = cv2.threshold(image, 1, 225, cv2.THRESH_BINARY_INV)
+_, binary_image = cv2.threshold(image, 25, 225, cv2.THRESH_BINARY_INV)
 
 height, width = binary_image.shape
 center_fraction = 3
@@ -54,29 +54,23 @@ center_ventricle = (max_loc[0] + start_x, max_loc[1] + start_y)
 # plt.axis('off')
 # plt.legend()
 # plt.show()
-# First widest black point
-center_x, center_y = center_ventricle
+# center_x, center_y = center_ventricle
 
-# Create a copy of the binary image to modify
 distance_transform_copy = distance_transform.copy()
 
-# Create a circular mask around the first point to exclude nearby points
-mask_radius = 550  # Adjust as needed for desired separation
+#Circular mask around the first point
+mask_radius = 550
 for y in range(distance_transform_copy.shape[0]):
     for x in range(distance_transform_copy.shape[1]):
         if (x - max_loc[0])**2 + (y - max_loc[1])**2 <= mask_radius**2:
-            distance_transform_copy[y, x] = 0  # Zero out nearby areas
+            distance_transform_copy[y, x] = 0
 
-# Find the second widest point within the remaining region
 min_val2, max_val2, min_loc2, max_loc2 = cv2.minMaxLoc(distance_transform_copy)
 second_center_ventricle = (max_loc2[0] + start_x, max_loc2[1] + start_y)
 
-# Add both points to the list
-points = [[center_x, center_y], [second_center_ventricle[0], second_center_ventricle[1]]]
+points = [[center_ventricle[0], center_ventricle[1]], [second_center_ventricle[0], second_center_ventricle[1]]]
 labels = [1, 1]
 
-# Generate masks for both points
 masks, scores, logits = im.get_best_mask(points, labels)
 
-# Visualize the result
 im.display(masks=masks, labels=labels, points=points)
