@@ -2,7 +2,7 @@ import math
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 from scipy.signal import argrelextrema
-im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
+im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
 
 def get_mask_center(mask):
@@ -131,7 +131,8 @@ def get_left_GCL(im, vent_box, display_maxes=False):
     points = []
     labels = []
     scores = []
-    for x in range(len(scan)):
+    x=1
+    while x <len(scan)-1:
         if len(scan[x]) == 3 and len(scan[x-1]) == 3 and len(scan[x+1]) == 3 and (scan[x][2]-scan[x][1]) < (scan[x][1]-scan[x][0]) and [(abs(scan[x][y]-scan[x-1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)] and [(abs(scan[x][y]-scan[x+1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)]:
             off = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
             points += [
@@ -145,8 +146,12 @@ def get_left_GCL(im, vent_box, display_maxes=False):
             masks, scores, logits = im.get_best_mask(points, labels)
             if scores > 0.85:
                 break
+            else:
+                print("Too small score: " + str(scores))
+            x+=10
+        x+=1
 
-    if scores is [] or scores[0] < 0.85:
+    if len(scores)==0 or scores[0] < 0.85:
         print("No Left GCL Detected!")
         return None
     else:
@@ -175,7 +180,8 @@ def get_right_GCL(im, vent_box, display_maxes=False):
     points = []
     labels = []
     scores = []
-    for x in range(len(scan)):
+    x=1
+    while x< len(scan)-1:
         if len(scan[x]) == 3 and len(scan[x-1]) == 3 and len(scan[x+1]) == 3 and (scan[x][2]-scan[x][1]) < (scan[x][1]-scan[x][0]) and [(abs(scan[x][y]-scan[x-1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)] and [(abs(scan[x][y]-scan[x+1][y]) < 0.5*(scan[x][2]-scan[x][1])) for y in range(3)] == [True for y in range(3)]:
             off = int(vent_box[2]+((0.2+((0.6/step)*x))*(im.image.shape[1] - vent_box[2])))
             points += [
@@ -187,10 +193,14 @@ def get_right_GCL(im, vent_box, display_maxes=False):
             ]
             labels += [1, 1, 0, 0, 0]
             masks, scores, logits = im.get_best_mask(points, labels)
-            if scores > 0.8:
+    #        im.display(masks=masks, points=points, labels=labels)
+            if scores > 0.85:
                 break
-
-    if scores is [] or scores[0] < 0.85:
+            else:
+                print("Too small score: " + str(scores))
+            x+=10
+        x+=1
+    if len(scores)==0 or scores[0] < 0.85:
         print("No Right GCL Detected!")
         return None
     else:
@@ -199,11 +209,11 @@ def get_right_GCL(im, vent_box, display_maxes=False):
             for x in range(len(store_points)):
                 points.append(store_points[x])
                 labels.append(1)
-        #im.display(masks=masks, points=points, labels=labels)
+    #    im.display(masks=masks, points=points, labels=labels)
         return masks[0]
 
 #Get central ventricle
-points = [[8000, 3500], [9500, 3500]]
+points = [[9600, 2600], [11300, 2600]]
 labels = [1, 1]
 masks, scores, logits = im.get_best_mask(points, labels)
 vent_x,vent_y = get_mask_center(masks[0])
