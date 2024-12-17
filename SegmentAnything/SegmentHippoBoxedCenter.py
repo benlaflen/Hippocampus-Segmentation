@@ -1,7 +1,7 @@
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 import cv2
-path = 'Cage4841876-Mouse3RL\\s3-NeuN.tif'
+path = 'Cage4841876-Mouse3RL\\+'
 #D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
 #D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
 im = SAM_Image(path, **recommended_kwargs)

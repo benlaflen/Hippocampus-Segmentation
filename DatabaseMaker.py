@@ -1,13 +1,17 @@
 import os
 import numpy as np
-from os.path import isfile, join
+from os.path import isfile, join, splitext
 from SegmentAnything.SAMethods import SAM_Image, recommended_kwargs
 import matplotlib.pyplot as plt
 from matplotlib.backend_bases import MouseButton
+import pickle
+import time
+import shutil
 
 input_folder = "Cage4841876-Mouse3RL" #Folder full of images to label
 output_folder = "Training-Database" #Folder to store the outputted images, masks, and points
 click_coords = None
+key_pressed = False
 
 colors = [
     [1,0,0],
@@ -38,16 +42,50 @@ def on_click(event):
     global click_coords
     if event.button is MouseButton.LEFT:
         click_coords = (event.xdata, event.ydata)
-        plt.disconnect(binding_id)
+        plt.close()
+
+def on_key(event):
+    global key_pressed
+    if event.key == 'd':  # Check if the "D" key was pressed
+        key_pressed = True
+        plt.close()  # Close the figure after the key press
 
 for filename in os.listdir(input_folder):
-    if(filename[0] == '.'):
+    if filename[0] == '.' or splitext(filename)[0] in os.listdir(output_folder):
         continue
     im = SAM_Image(join(input_folder,filename), **recommended_kwargs)
-    for comp in ["Central Ventricle", "GCL", "Hilus", "CA3", "DG"]:
-        plt.figure(figsize=(10,10))
-        plt.imshow(im.image)
-        plt.title(f"Select a point in the " + comp, fontsize=18)
-        plt.axis('off')
-        binding_id = plt.connect('motion_notify_event', on_click)
-        plt.show()
+    masks = []
+    out_points = []
+    for comp in ["Central Ventricle", "Left GCL", "Left Hilus", "Left CA3", "Left DG", "Right GCL", "Right Hilus", "Right CA3", "Right DG"]:
+        mask = None
+        points = []
+        labels = []
+        key_pressed = False
+        while not key_pressed:
+            click_coords = None
+            plt.figure(figsize=(10,10))
+            plt.imshow(im.image)
+            plt.title(f"Select points until the " + comp + " is fully highlighted, then press D.", fontsize=15)
+            plt.axis('off')
+            if mask is not None:
+                show_mask(mask, plt.gca(), color=colors[0])
+            for point in points:
+                plt.plot(point[0], point[1], 'bo')
+            plt.connect('button_press_event', on_click)
+            plt.connect('key_press_event', on_key)
+            plt.show()
+            if click_coords != None:
+                points.append(click_coords)
+                labels.append(1)
+                mask,_,_=im.get_best_mask(points=points,labels=labels)
+        if mask is not None:
+            masks.append(mask)
+            out_points.append(points)
+    if masks != []:
+        os.mkdir(join(output_folder,splitext(filename)[0]))
+        with open(join(output_folder,splitext(filename)[0],"masks"), "wb") as file:
+            pickle.dump(masks, file)
+        with open(join(output_folder,splitext(filename)[0],"points"), "wb") as file:
+            pickle.dump(points, file)
+        shutil.copy(join(input_folder,filename), join(output_folder,splitext(filename)[0],"image"))
+        
