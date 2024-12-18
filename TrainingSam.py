@@ -68,7 +68,7 @@ scaler = torch.cuda.amp.GradScaler() # mixed precision
 # Training loop
 
 for itr in range(100000):
-    with torch.cuda.amp.autocast(): # cast to mix precision
+    with torch.amp.autocast("cuda"): # cast to mix precision
             image,mask,input_point, input_label = read_batch(data) # load data batch
             if mask.shape[0]==0: continue # ignore empty batches
             predictor.set_image(image) # apply SAM image encoder to the image
