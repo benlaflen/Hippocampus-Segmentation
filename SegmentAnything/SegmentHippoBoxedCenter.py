@@ -21,10 +21,12 @@ def get_mask_bounds(mask):
 #im.display_masks(masks, scores)
 
 image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+denoised_image = cv2.GaussianBlur(image, (5, 5), 0)
+_, binary_image = cv2.threshold(denoised_image, 25, 225, cv2.THRESH_BINARY_INV)
 # plt.figure(figsize=(10,10))
 # plt.imshow(image)
 # plt.show() 
-_, binary_image = cv2.threshold(image, 25, 225, cv2.THRESH_BINARY_INV)
+#_, binary_image = cv2.threshold(image, 25, 225, cv2.THRESH_BINARY_INV)
 
 height, width = binary_image.shape
 center_fraction = 3
@@ -42,29 +44,27 @@ center_ventricle = (max_loc[0] + start_x, max_loc[1] + start_y)
 
 distance_transform_copy = distance_transform.copy()
 
-#Circular mask around the first point
-mask_radius = 550
-for y in range(distance_transform_copy.shape[0]):
-    for x in range(distance_transform_copy.shape[1]):
-        if (x - max_loc[0])**2 + (y - max_loc[1])**2 <= mask_radius**2:
-            distance_transform_copy[y, x] = 0
+def generate_additional_positive_points(center, num_points=8, radius=30):
+    """
+    Generate additional positive points around the center point within a given radius.
+    """
+    points = []
+    for _ in range(num_points):
+        x_offset = np.random.randint(-radius, radius)
+        y_offset = np.random.randint(-radius, radius)
+        x = center[0] + x_offset
+        y = center[1] + y_offset
+        if 0 <= x < width and 0 <= y < height:  # Ensure the point is within bounds
+            points.append([x, y])
+    return points
+# Generate additional positive points around the center ventricle
+additional_positive_points = generate_additional_positive_points(center_ventricle, num_points=10, radius=100)
 
-min_val2, max_val2, min_loc2, max_loc2 = cv2.minMaxLoc(distance_transform_copy)
-second_center_ventricle = (max_loc2[0] + start_x, max_loc2[1] + start_y)
+points = [[center_ventricle[0], center_ventricle[1]]] + additional_positive_points
+labels = [1] * len(points)
 
-#Circular mask around the first point
-mask_radius = 10000
-for y in range(distance_transform_copy.shape[0]):
-    for x in range(distance_transform_copy.shape[1]):
-        if (x - max_loc[0])**2 + (y - max_loc[1])**2 <= mask_radius**2:
-            distance_transform_copy[y, x] = 0
-
-min_val2, max_val2, min_loc2, max_loc2 = cv2.minMaxLoc(distance_transform_copy)
-outside_point = (max_loc2[0] + start_x, max_loc2[1] + start_y)
-
-points = [[center_ventricle[0], center_ventricle[1]], [second_center_ventricle[0], second_center_ventricle[1]],[outside_point[0], outside_point[1]]]
-labels = [1, 1,0]
-
+# Get the SAM mask
 masks, scores, logits = im.get_best_mask(points, labels)
 
+# Display results
 im.display(masks=masks, labels=labels, points=points)
