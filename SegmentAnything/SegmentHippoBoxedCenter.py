@@ -11,7 +11,7 @@ def get_mask_bounds(mask):
     nz = np.nonzero(mask)
     return (np.min(nz[1]), np.min(nz[0]), np.max(nz[1]), np.max(nz[0]))
 # Load the image in grayscale
-path = 'Cage4841876-Mouse3RL\\s2-NeuN.tif'
+path = 'Cage5195087-Mouse3RL\\NeuN-s2.tif'
 #D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
 #D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
 image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
@@ -44,42 +44,66 @@ _, _, _, max_loc = cv2.minMaxLoc(distance_transform)
 # Adjust the coordinates to account for cropping and define the center ventricle point
 center_ventricle = (max_loc[0] + start_x, max_loc[1])
 
-def find_second_positive_point(distance_transform, first_point, min_distance=100):
-    # Find a second positive point in the distance transform that is far enough from the first point (to help SAM accuracy)
-    flat_indices = np.argsort(-distance_transform.flatten())  # Sort distances in descending order
-    for idx in flat_indices:
-        y, x = np.unravel_index(idx, distance_transform.shape)
-        # Check if the candidate point is at least `min_distance` away from the first point
-        if np.linalg.norm(np.array([x, y]) - np.array(first_point)) > min_distance:
-            return (x, y)  # Returns the second positive point
-    return None
+# def find_second_positive_point(distance_transform, first_point, start_x, end_x, min_dist=None):
+#     # Calculate the minimum distance dynamically based on the first point's distance to the nearest edge
+#     if min_dist is None:
+#         x, y = first_point
+#         # Calculate distances to the edges
+#         dist_to_top = y
+#         dist_to_bottom = distance_transform.shape[0] - y - 1
+#         dist_to_left = x - start_x
+#         dist_to_right = end_x - x
+#         # Minimum distance to the closest edge
+#         closest_edge_dist = min(dist_to_top, dist_to_bottom, dist_to_left, dist_to_right)
+#         min_dist = closest_edge_dist / 2  # Set min_dist as half of the closest edge distance
 
-# Find a second center-ventricle-like point in the distance transform using method above
-second_local = find_second_positive_point(distance_transform, max_loc)
-if second_local:
-    # Adjust the second point coordinates for cropping
-    second_point = (second_local[0] + start_x, second_local[1])
-else:
-    raise ValueError("Unable to find a second positive point.")
+#     # Sort distances in descending order to prioritize regions farther away from zeros
+#     flat_indices = np.argsort(-distance_transform.flatten())
+#     for idx in flat_indices:
+#         y, x = np.unravel_index(idx, distance_transform.shape)
+#         # Check if the candidate point is within the allowable region and min_dist from the first point
+#         if np.linalg.norm(np.array([x, y]) - np.array(first_point)) > min_dist:
+#             return (x, y)  # Return the second positive point
+#     return None
+    
+# second_local = find_second_positive_point(
+#     distance_transform, 
+#     max_loc, 
+#     start_x=start_x, 
+#     end_x=end_x
+# )
 
-def generate_negative_points_outside_center_y(center_y, start_x, end_x, num_points=10):
-    # Generate negative points randomly outside the center region but aligned with the given center_y (abitrary rule)
+# Check if a second point was found and adjust its coordinates
+# if second_local:
+#     second_point = (second_local[0] + start_x, second_local[1])
+# else:
+#     raise ValueError("Unable to find a second positive point.")
+
+def generate_negative_points_outside_center_x(center_y, start_x, end_x, num_points=10):
+    # Generate negative points systematically outside the center region along a fixed y-coordinate
     negative_points = []
-    for _ in range(num_points):
-        while True:
-            # Randomly pick an x-coordinate
-            x = np.random.randint(0, width)
-            y = np.random.randint(0, height)
-            if x < start_x or x > end_x:  # Ensure the point is outside the center region
-                negative_points.append((x, y))
-                break
+    step_x = max(1, width // num_points)  # Step size for x-coordinates to distribute points
+
+    for i in range(num_points):
+        if i % 2 == 0:  # Alternate points on the left side of the center region
+            x = (start_x - (i // 2 + 1) * step_x) % width
+        else:  # Alternate points on the right side of the center region
+            x = (end_x + (i // 2 + 1) * step_x) % width
+
+        # Add the point with a fixed y-coordinate (center_y)
+        negative_points.append((x, center_y))
+
     return negative_points
 
 # Generate a set of negative points for training outside the center region
-negative_points = generate_negative_points_outside_center_y(center_ventricle[1], start_x, end_x, num_points=10)
-
-# Combine positive (ventricle-related) and negative points with labels
-positive_points = [center_ventricle, second_point]
+negative_points = generate_negative_points_outside_center_x(
+    center_y=center_ventricle[1], 
+    start_x=start_x, 
+    end_x=end_x, 
+    num_points=10
+)
+# Combine positive (center ventricle-related) and negative points with labels
+positive_points = [center_ventricle]
 points = positive_points + negative_points
 labels = [1] * len(positive_points) + [0] * len(negative_points)
 
