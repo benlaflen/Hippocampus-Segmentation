@@ -7,6 +7,8 @@ from matplotlib.backend_bases import MouseButton
 import pickle
 import time
 import shutil
+from mpl_point_clicker import clicker
+from mpl_interactions import zoom_factory, panhandler
 
 input_folder = "Cage4841876-Mouse3RL" #Folder full of images to label
 output_folder = "Training-Database" #Folder to store the outputted images, masks, and points
@@ -38,17 +40,13 @@ def show_points(coords, labels, ax, marker_size=100):
     ax.scatter(pos_points[:, 0], pos_points[:, 1], color='green', marker='o', s=marker_size, edgecolor='white', linewidth=1.25)
     ax.scatter(neg_points[:, 0], neg_points[:, 1], color='red', marker='o', s=marker_size, edgecolor='white', linewidth=1.25) 
 
-def on_click(event):
-    global click_coords
-    if event.button is MouseButton.LEFT:
-        click_coords = (event.xdata, event.ydata)
-        plt.close()
-
 def on_key(event):
     global key_pressed
     if event.key == 'd':  # Check if the "D" key was pressed
         key_pressed = True
         plt.close()  # Close the figure after the key press
+    elif event.key == 'r':
+        plt.close()
 
 for filename in os.listdir(input_folder):
     if filename[0] == '.' or splitext(filename)[0] in os.listdir(output_folder):
@@ -61,7 +59,7 @@ for filename in os.listdir(input_folder):
         points = []
         labels = []
         key_pressed = False
-        while not key_pressed:
+        while not key_pressed:            
             click_coords = None
             plt.figure(figsize=(10,10))
             plt.imshow(im.image)
@@ -71,13 +69,16 @@ for filename in os.listdir(input_folder):
                 show_mask(mask, plt.gca(), color=colors[0])
             for point in points:
                 plt.plot(point[0], point[1], 'bo')
-            plt.connect('button_press_event', on_click)
+            
             plt.connect('key_press_event', on_key)
+            zoom_factory(plt.gca())
+            ph = panhandler(plt.gcf(), button=2)
+            clicks = clicker(
+                plt.gca(),
+                ["positive", "negative"],
+                markers=["o", "x"]
+            )
             plt.show()
-            if click_coords != None:
-                points.append(click_coords)
-                labels.append(1)
-                mask,_,_=im.get_best_mask(points=points,labels=labels)
         if mask is not None:
             masks.append(mask)
             out_points.append(points)
