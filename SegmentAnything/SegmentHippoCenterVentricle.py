@@ -11,17 +11,17 @@ def get_mask_bounds(mask):
     nz = np.nonzero(mask)
     return (np.min(nz[1]), np.min(nz[0]), np.max(nz[1]), np.max(nz[0]))
 # Load the image in grayscale
-path = 'Cage5195087-Mouse3RL\\NeuN-s2.tif'
+path = 'Cage4841876-Mouse3RL\\s3-NeuN.tif'
 #D:\Katie\Hippocampus-Segmentation\Cage4841876-Mouse3RL\\s1-NeuN.tif
 #D:\Katie\Hippocampus-Segmentation\Cage5195087-Mouse3RL\\NeuN-s1.tif
 image = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-# Threshold the image to create a binary image (inverse binary threshold)
+# Threshold the image to create a binary image
 _, binary_image = cv2.threshold(image, 100, 255, cv2.THRESH_BINARY_INV)
 
-# Create a small, oval-shaped kernel to process the image and clean up noise
+# Create a small, oval-shaped kernel to process the image & clean up noise
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
-# Perform morphological opening to remove the noise and smooth image boundaries
+# Morphological opening to remove the noise and smooth image boundaries
 cleaned_binary = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, kernel)
 
 # Get the height and width of the cleaned binary image
@@ -32,10 +32,10 @@ center_fraction = 3
 start_x = width // center_fraction  # Start of the center region
 end_x = width - width // center_fraction  # End of the center region
 
-# Crop the binary image to only include the center region
+# Crop the binary image & only include the center region
 center_binary = cleaned_binary[:, start_x:end_x]
 
-# Perform a distance transform to calculate the (Euclidean) distance to the nearest zero pixel for each pixel
+# Perform a distance transform to calculate the Euclidean distance to the nearest zero pixel for each pixel
 distance_transform = cv2.distanceTransform(center_binary, cv2.DIST_L2, 5)
 
 # Find the pixel with the maximum distance in the distance transform
@@ -43,41 +43,6 @@ _, _, _, max_loc = cv2.minMaxLoc(distance_transform)
 
 # Adjust the coordinates to account for cropping and define the center ventricle point
 center_ventricle = (max_loc[0] + start_x, max_loc[1])
-
-# def find_second_positive_point(distance_transform, first_point, start_x, end_x, min_dist=None):
-#     # Calculate the minimum distance dynamically based on the first point's distance to the nearest edge
-#     if min_dist is None:
-#         x, y = first_point
-#         # Calculate distances to the edges
-#         dist_to_top = y
-#         dist_to_bottom = distance_transform.shape[0] - y - 1
-#         dist_to_left = x - start_x
-#         dist_to_right = end_x - x
-#         # Minimum distance to the closest edge
-#         closest_edge_dist = min(dist_to_top, dist_to_bottom, dist_to_left, dist_to_right)
-#         min_dist = closest_edge_dist / 2  # Set min_dist as half of the closest edge distance
-
-#     # Sort distances in descending order to prioritize regions farther away from zeros
-#     flat_indices = np.argsort(-distance_transform.flatten())
-#     for idx in flat_indices:
-#         y, x = np.unravel_index(idx, distance_transform.shape)
-#         # Check if the candidate point is within the allowable region and min_dist from the first point
-#         if np.linalg.norm(np.array([x, y]) - np.array(first_point)) > min_dist:
-#             return (x, y)  # Return the second positive point
-#     return None
-    
-# second_local = find_second_positive_point(
-#     distance_transform, 
-#     max_loc, 
-#     start_x=start_x, 
-#     end_x=end_x
-# )
-
-# Check if a second point was found and adjust its coordinates
-# if second_local:
-#     second_point = (second_local[0] + start_x, second_local[1])
-# else:
-#     raise ValueError("Unable to find a second positive point.")
 
 def generate_negative_points_outside_center_x(center_y, start_x, end_x, num_points=10):
     # Generate negative points systematically outside the center region along a fixed y-coordinate

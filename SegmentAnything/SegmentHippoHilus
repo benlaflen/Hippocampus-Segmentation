@@ -1,0 +1,76 @@
+from SAMethods import SAM_Image, recommended_kwargs
+from SegmentHippo import get_left_GCL, get_right_GCL
+import numpy as np
+import matplotlib.pyplot as plt
+
+def get_mask_bounds(mask):
+    nz = np.nonzero(mask)
+    return (np.min(nz[1]), np.min(nz[0]), np.max(nz[1]), np.max(nz[0]))
+
+def detect_hiluses(im, vent_box, left_ca3_tip, right_ca3_tip):
+    left_gcl_mask = get_left_GCL(im, vent_box, display_maxes=False)
+    right_gcl_mask = get_right_GCL(im, vent_box, display_maxes=False)
+
+    if left_gcl_mask is None and right_gcl_mask is None:
+        print("Error: Unable to detect GCLs.")
+        return [], []
+
+    gcl_masks = [mask for mask in [left_gcl_mask, right_gcl_mask] if mask is not None]
+
+    hilus_masks = []
+    left_hilus_box = None
+    right_hilus_box = None
+
+    if left_gcl_mask is not None and left_gcl_mask.any():
+        left_gcl_bounds = get_mask_bounds(left_gcl_mask)
+        left_hilus_box = [
+            left_gcl_bounds[0], 
+            left_gcl_bounds[3],
+            left_gcl_bounds[2],
+            left_ca3_tip[1],
+        ]
+        left_hilus_mask, _, _ = im.get_best_mask(
+            points=[[sum(left_hilus_box[::2]) // 2, sum(left_hilus_box[1::2]) // 2]],
+            labels=[1],
+            boxes=[left_hilus_box],
+        )
+        hilus_masks.append(left_hilus_mask[0] if left_hilus_mask is not None and left_hilus_mask.any() else None)
+
+    if right_gcl_mask is not None and right_gcl_mask.any():
+        right_gcl_bounds = get_mask_bounds(right_gcl_mask)
+        # Hilus box for the right side
+        right_hilus_box = [
+            right_gcl_bounds[0], 
+            right_gcl_bounds[3],  
+            right_gcl_bounds[2],  
+            right_ca3_tip[1],
+        ]
+        right_hilus_mask, _, _ = im.get_best_mask(
+            points=[[sum(right_hilus_box[::2]) // 2, sum(right_hilus_box[1::2]) // 2]],
+            labels=[1],
+            boxes=[right_hilus_box],
+        )
+        hilus_masks.append(right_hilus_mask[0] if right_hilus_mask is not None and right_hilus_mask.any() else None)
+
+        masks_to_display = gcl_masks + [mask for mask in hilus_masks if mask is not None]
+        boxes_to_display = []
+        if left_hilus_box:
+            boxes_to_display.append(left_hilus_box)
+        if right_hilus_box:
+            boxes_to_display.append(right_hilus_box)
+        im.display(masks=masks_to_display, boxes=boxes_to_display)
+
+    return hilus_masks, gcl_masks
+
+
+left_ca3_tip = [8500, 3000]  # Example coordinates for left CA3 tip
+right_ca3_tip = [12500, 3000]  # Example coordinates for right CA3 tip
+points = [[9600, 2600], [11300, 2600]]  # Points to define ventricle box
+labels = [1, 1]
+
+im = SAM_Image(r"Cage5195087-Mouse3RL\NeuN-s3.tif", **recommended_kwargs)
+masks, scores, logits = im.get_best_mask(points=points, labels=labels)
+vent_box = get_mask_bounds(masks[0]) 
+
+hilus_masks, gcl_masks = detect_hiluses(im, vent_box, left_ca3_tip, right_ca3_tip)
+
