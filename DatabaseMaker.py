@@ -76,7 +76,8 @@ for filename in os.listdir(input_folder):
             clicks = clicker(
                 plt.gca(),
                 ["positive", "negative"],
-                markers=["o", "x"]
+                markers=["o", "x"],
+                
             )
             plt.show()
         if mask is not None:

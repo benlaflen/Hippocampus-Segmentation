@@ -1,30 +1,33 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_point_clicker import clicker
-from mpl_interactions import zoom_factory, panhandler
 
-fig, ax = plt.subplots(constrained_layout=True)
-ax.plot(np.sin(np.arange(200)/(5*np.pi)))
+fig, ax = plt.subplots()
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 10)
 
-zoom_factory(ax)
-ph = panhandler(fig, button=2)
+clicker_instance = clicker(ax, ["points"], markers=["o"])
 
-clicks = clicker(
-   ax,
-   ["positive", "negative"],
-   markers=["o", "x"]
-)
+# Create a 100x100 grid and initialize the imshow object
+shape_array = np.zeros((100, 100))
+im = ax.imshow(shape_array, extent=(0, 10, 0, 10), origin="lower", cmap="Blues", alpha=0.6, vmin=0, vmax=1)
 
-data = \
-np.array([[ 5.83720666e+00, -5.73988654e-01],
-         [ 2.46956149e+01, -1.41575199e-02],
-         [ 5.20403030e+01,  5.70227612e-01],
-         [ 8.55139728e+01,  7.56837990e-01],
-         [ 1.30302686e+02,  3.73795635e-01],
-         [ 1.69433877e+02, -2.40054293e-01],
-         [ 2.01493167e+02, -5.05237462e-01]])
+def update_shape(x,y):
+    points = clicker_instance.get_positions()["points"]
 
-plt.plot(data[:,0],data[:,1],c='r')
+    # Clear the shape array
+    shape_array.fill(0)
 
+    # Add circular regions around points
+    for x, y in points:
+        grid_x, grid_y = np.meshgrid(np.linspace(0, 10, 100), np.linspace(0, 10, 100))
+        mask = np.sqrt((grid_x - x)**2 + (grid_y - y)**2) < 0.5
+        shape_array[mask] = 1
+
+    # Update imshow
+    im.set_data(shape_array)
+    fig.canvas.draw()
+
+clicker_instance.on_point_added(update_shape)
 
 plt.show()
