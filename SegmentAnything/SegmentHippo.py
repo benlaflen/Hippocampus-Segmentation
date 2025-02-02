@@ -2,8 +2,8 @@ import math
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 from scipy.signal import argrelextrema
-im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
 import matplotlib.pyplot as plt
+from SegmentHippoCenterVentricle import get_central_ventricle
 
 def get_mask_center(mask):
     nz = np.nonzero(mask)
@@ -212,17 +212,80 @@ def get_right_GCL(im, vent_box, display_maxes=False):
     #    im.display(masks=masks, points=points, labels=labels)
         return masks[0]
 
+def slice_image(im, coord, dir=0):
+    if dir == 0:
+        return im[:, coord]
+    else:
+        return im[coord, :]
+
+def count_slice_regions(slice, disp=False):
+    if len(slice.shape) > 1:
+        slice = np.mean(slice, 1)
+
+    window_size = 100
+    weights = np.ones(window_size) / window_size
+    sma = np.concatenate(([0 for x in range(int(window_size/2))],np.convolve(slice, weights, mode='valid'),[0 for x in range(int(window_size/2))]))
+
+    maximums = argrelextrema(sma, np.greater_equal)[0]
+
+    cutoff = 2*np.average(sma)
+
+    finalmaxes = []
+    current = -1
+    for x in range(len(sma)):
+        if sma[x] < cutoff:
+            if current != -1:
+                finalmaxes.append(current)
+                current = -1
+        elif x in maximums:
+            if current == -1 or sma[x] > sma[current]:
+                current = x
+    if disp:
+        plt.axhline(cutoff)
+        plt.plot(slice)
+        plt.plot(sma)
+        for point in finalmaxes:
+            plt.plot(point, sma[point], 'bo')
+        plt.show()
+    return finalmaxes
+
+def Get_Left_CA3(im, left_gcl):
+    #First, get the upper and lower farthest left points of the GCL
+    x = 0
+    while len(count_slice_regions(slice_image(left_gcl, x))) != 2:
+        x+=1
+        if x%1000 == 0:
+            print(x)
+    plt.plot(slice_image(left_gcl, x))
+    print(count_slice_regions(slice_image(left_gcl, x)))
+    plt.show() #[2729, 3494]
+    #our first point is midway between these two
+
+    #now move straight left from the upper point until we hit a large bright band
+
+    #our second point is in the middle of this band
+
+    #our third (negative) point is halfway to the band
+
+    #now move straight down from that third point until we hit a large bright band
+
+    #our fourth point is in the middle of this band
+
+
 #Get central ventricle
-points = [[9600, 2600], [11300, 2600]]
-labels = [1, 1]
-masks, scores, logits = im.get_best_mask(points, labels)
+im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
+masks, scores, logits = get_central_ventricle(im)
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
 left_gcl = get_left_GCL(im, vent_box, False)
 right_gcl = get_right_GCL(im, vent_box, False)
-masks = []
+masks = [masks[0]]
+points = [(vent_x,vent_y)]
+labels = [0]
 if left_gcl is not None:
     masks.append(left_gcl)
 if right_gcl is not None:
     masks.append(right_gcl)
 im.display(masks=masks, boxes=[vent_box], points=points, labels=labels)
+if left_gcl is not None:
+    left_ca3 = Get_Left_CA3(im, left_gcl)
