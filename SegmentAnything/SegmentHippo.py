@@ -228,7 +228,7 @@ def count_slice_regions(slice, disp=False):
 
     maximums = argrelextrema(sma, np.greater_equal)[0]
 
-    cutoff = 2*np.average(sma)
+    cutoff = 1.75*np.average(sma)
 
     finalmaxes = []
     current = -1
@@ -252,25 +252,59 @@ def count_slice_regions(slice, disp=False):
 def Get_Left_CA3(im, left_gcl):
     #First, get the upper and lower farthest left points of the GCL
     x = 0
-    while len(count_slice_regions(slice_image(left_gcl, x))) != 2:
-        x+=1
-        if x%1000 == 0:
-            print(x)
-    plt.plot(slice_image(left_gcl, x))
-    print(count_slice_regions(slice_image(left_gcl, x)))
-    plt.show() #[2729, 3494]
+    while len(count_slice_regions(slice_image(left_gcl, x))) != 2 and x < len(left_gcl):
+        x+=5
+    if x > len(left_gcl):
+        return None
+    spots = count_slice_regions(slice_image(left_gcl, x))
+    lower = (x, spots[1])
+    upper = (x, spots[0])
+    points = [upper, lower]
+    labels = [0, 0]
     #our first point is midway between these two
-
+    points.append((x,(lower[1]+upper[1])/2))
+    labels.append(1)
     #now move straight left from the upper point until we hit a large bright band
-
+    hband = count_slice_regions(slice_image(im.image, upper[1], 1))
+    hband.reverse()
+    collision = None
+    for point in hband:
+        if point < x-(200):
+            collision = (point, upper[1])
+            break
+    if collision == None:
+        return None
     #our second point is in the middle of this band
-
+    points.append(collision)
+    labels.append(1)
     #our third (negative) point is halfway to the band
-
+    midneg = ((collision[0]+upper[0])/2, upper[1])
+    points.append(midneg)
+    labels.append(0)
     #now move straight down from that third point until we hit a large bright band
-
+    vband = count_slice_regions(slice_image(im.image, int(midneg[0])), disp=False)
+    collision2 = None
+    for point in vband:
+        if point > midneg[1]+(200):
+            collision2 = (midneg[0], point)
+            break
+    if collision2 == None:
+        return None
     #our fourth point is in the middle of this band
+    points.append(collision2)
+    labels.append(1)
 
+    #Establish line of negative points to the right of the tip
+    dist = 2*upper[0]-collision[0]
+    points.extend([(dist, upper[1]), (dist, collision2[1]), (dist, lower[1]), (dist, (upper[1]+collision2[1])/2), (dist, (collision2[1]+lower[1])/2)])
+    labels.extend([0, 0, 0, 0, 0])
+
+    #Establish line of negative points above CA3
+    dist = 2*upper[1]-lower[1]
+    points.extend([(upper[0], dist), (midneg[0], dist), (collision[0], dist), (1.5*collision[0]-0.5*midneg[0], dist)])
+    labels.extend([0, 0, 0, 0])
+    mask,x,y=im.get_best_mask(points, labels)
+    im.display(points=points, labels=labels,masks=[mask])
 
 #Get central ventricle
 im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
@@ -286,6 +320,6 @@ if left_gcl is not None:
     masks.append(left_gcl)
 if right_gcl is not None:
     masks.append(right_gcl)
-im.display(masks=masks, boxes=[vent_box], points=points, labels=labels)
 if left_gcl is not None:
     left_ca3 = Get_Left_CA3(im, left_gcl)
+im.display(masks=masks, boxes=[vent_box], points=points, labels=labels)
