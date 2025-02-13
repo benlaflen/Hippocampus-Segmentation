@@ -303,23 +303,32 @@ def Get_Left_CA3(im, left_gcl):
     dist = 2*upper[1]-lower[1]
     points.extend([(upper[0], dist), (midneg[0], dist), (collision[0], dist), (1.5*collision[0]-0.5*midneg[0], dist)])
     labels.extend([0, 0, 0, 0])
+
+
+    #Get negative point halfway between second point and fourth point
+    points.append(((collision[0]+collision2[0])/2,(collision[1]+collision2[1])/2))
+    labels.append(0)
+
     mask,x,y=im.get_best_mask(points, labels)
     im.display(points=points, labels=labels,masks=[mask])
+    return mask
 
 #Get central ventricle
-im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
+im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
 masks, scores, logits = get_central_ventricle(im)
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
 left_gcl = get_left_GCL(im, vent_box, False)
 right_gcl = get_right_GCL(im, vent_box, False)
 masks = [masks[0]]
-points = [(vent_x,vent_y)]
-labels = [0]
+points = []
+labels = []
 if left_gcl is not None:
     masks.append(left_gcl)
 if right_gcl is not None:
     masks.append(right_gcl)
 if left_gcl is not None:
     left_ca3 = Get_Left_CA3(im, left_gcl)
-im.display(masks=masks, boxes=[vent_box], points=points, labels=labels)
+    if left_ca3 is not None:
+        masks.append(left_ca3)
+im.display(masks=masks, points=points, labels=labels)
