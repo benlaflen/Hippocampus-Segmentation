@@ -2,6 +2,7 @@ import math
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
 from scipy.signal import argrelextrema
+from scipy.ndimage import label, center_of_mass
 import matplotlib.pyplot as plt
 from SegmentHippoCenterVentricle import get_central_ventricle
 
@@ -44,6 +45,41 @@ def get_verticle_maxima(target_x, image, disp=False):
             plt.plot(point, sma[point], 'bo')
         plt.show()
     return finalmaxes
+
+def ColumnBinarization(image, threshold): #0.2 for detecting blood vessels, #0.8 for detecting GCL and CA3
+    if image.ndim == 3:
+        image = np.mean(image, axis=2)
+    col_thresholds = np.mean(image, axis=0)
+    thresholds = col_thresholds[None, :]
+    binary_image = image >= thresholds*threshold*2
+    return binary_image.astype(np.uint8)
+
+def Threshold(image, threshold):
+    if image.ndim == 3:
+        image = np.mean(image, axis=2)
+    image = image*ColumnBinarization(image, threshold)
+    return np.stack([image]*3,axis=2)
+
+def GetComponents(image, threshold, minComponentSize, display=False):
+    binary_image = ColumnBinarization(image, threshold)
+    labeled_image, num_components = label(binary_image)
+    component_sizes = np.bincount(labeled_image.ravel())
+
+    large_labels = np.where(component_sizes >= minComponentSize)[0]
+    large_labels = large_labels[large_labels != 0]
+
+    keep_mask = np.isin(labeled_image, large_labels)
+    if display:
+        plt.figure(figsize=(10,10))
+        plt.imshow(keep_mask, cmap="gray")
+        for label_id in large_labels:
+            y,x = center_of_mass(labeled_image == label_id)
+            plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
+                     color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
+        plt.axis("off")
+        plt.show()
+    return keep_mask.astype(np.uint8), labeled_image, large_labels
+
 
 
 
@@ -257,8 +293,8 @@ def Get_Left_CA3(im, left_gcl):
     if x > len(left_gcl):
         return None
     spots = count_slice_regions(slice_image(left_gcl, x))
-    lower = (x, spots[1])
-    upper = (x, spots[0])
+    lower = (x, spots[1]+50)
+    upper = (x, spots[0]+50)
     points = [upper, lower]
     labels = [0, 0]
     #our first point is midway between these two
@@ -314,7 +350,12 @@ def Get_Left_CA3(im, left_gcl):
     return mask
 
 #Get central ventricle
-im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
+plt.figure(figsize=(10,10))
+plt.imshow(ColumnBinarization(im.image, 0.2))
+plt.show()
+keep_mask, labeled_image, labels, sizes = GetComponents(im.image, 0.8, 100000, True)
+"""
 masks, scores, logits = get_central_ventricle(im)
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
@@ -331,4 +372,4 @@ if left_gcl is not None:
     left_ca3 = Get_Left_CA3(im, left_gcl)
     if left_ca3 is not None:
         masks.append(left_ca3)
-im.display(masks=masks, points=points, labels=labels)
+# im.display(masks=masks, points=points, labels=labels)"""
