@@ -1,8 +1,10 @@
 import math
+import cv2
 from SAMethods import SAM_Image, recommended_kwargs
 import numpy as np
-from scipy.signal import argrelextrema
-from scipy.ndimage import label, center_of_mass
+from scipy.signal import argrelextrema, convolve2d
+from skimage.morphology import skeletonize
+from scipy.ndimage import label, center_of_mass, generic_filter
 import matplotlib.pyplot as plt
 from SegmentHippoCenterVentricle import get_central_ventricle
 
@@ -72,13 +74,28 @@ def GetComponents(image, threshold, minComponentSize, display=False):
     if display:
         plt.figure(figsize=(10,10))
         plt.imshow(keep_mask, cmap="gray")
-        for label_id in large_labels:
-            y,x = center_of_mass(labeled_image == label_id)
-            plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
-                     color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
+   #     for label_id in large_labels:
+   #         y,x = center_of_mass(labeled_image == label_id)
+   #         plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
+   #                  color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
         plt.axis("off")
         plt.show()
     return keep_mask.astype(np.uint8), labeled_image, large_labels
+
+def SkeletonizeComponents(keep_mask, display=False):
+    blobby_image = blobbyFilter(keep_mask)
+    skeletonizedImage = skeletonize(blobby_image, method="lee")
+    if display:
+        plt.figure(figsize=(10,10))
+        plt.imshow(skeletonizedImage, cmap="gray")
+        plt.axis("off")
+        plt.show()
+
+def blobbyFilter(mask):
+    kernel = np.ones((5,5), dtype=np.uint8)
+    local_sum = convolve2d(mask, kernel, mode="same", boundary="symm")
+    threshold = (kernel.size // 2)
+    return (local_sum > threshold).astype(np.uint8)
 
 
 
@@ -349,13 +366,44 @@ def Get_Left_CA3(im, left_gcl):
     im.display(points=points, labels=labels,masks=[mask])
     return mask
 
+def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
+    #Setup - get contours for all the components
+    contours = {}
+    for label in labels:
+        contours[label] = cv2.findContours(labeled_image[label].astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        plt.figure(figsize=(10,10))
+        canvas = np.zeros_like(im.image)
+        cv2.drawContours(canvas , contours[label][0], -1, (0, 255, 0), 1)
+
+        plt.imshow(canvas)
+        plt.show()
+    
+    #First, get the upper and lower farthest left points of the GCL
+    x = 0
+    while len(count_slice_regions(slice_image(left_gcl, x))) != 2 and x < len(left_gcl):
+        x+=5
+    if x > len(left_gcl):
+        return None
+    spots = count_slice_regions(slice_image(left_gcl, x))
+    lower = (x, spots[1]+50)
+    upper = (x, spots[0]+50)
+    points = [upper, lower]
+    labels = [0, 0]
+    #They should each be in or right next to one of our large components - remove those from the list
+
+    #Get the midpoint and the component it's closest to
+
+    #Focusing just on that component, get the farthest over we'll go
+
+    #Now start tracing left from the top point and getting the midpoint in that component
+    
+    return
+
+
 #Get central ventricle
 im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
-plt.figure(figsize=(10,10))
-plt.imshow(ColumnBinarization(im.image, 0.2))
-plt.show()
-keep_mask, labeled_image, labels, sizes = GetComponents(im.image, 0.8, 100000, True)
-"""
+keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
+
 masks, scores, logits = get_central_ventricle(im)
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
@@ -369,7 +417,8 @@ if left_gcl is not None:
 if right_gcl is not None:
     masks.append(right_gcl)
 if left_gcl is not None:
-    left_ca3 = Get_Left_CA3(im, left_gcl)
+    #left_ca3 = Get_Left_CA3(im, left_gcl)
+    left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels)
     if left_ca3 is not None:
         masks.append(left_ca3)
 # im.display(masks=masks, points=points, labels=labels)"""

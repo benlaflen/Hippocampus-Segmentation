@@ -1,33 +1,29 @@
+import cv2
 import numpy as np
+from skimage.morphology import skeletonize
 import matplotlib.pyplot as plt
-from mpl_point_clicker import clicker
 
-fig, ax = plt.subplots()
-ax.set_xlim(0, 10)
-ax.set_ylim(0, 10)
+# Invert the horse image
+image = cv2.imread(r'FiguresData\Figure_9.png')
+image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+if image.ndim == 3:
+    image = np.mean(image, axis=2).astype(np.uint8)
 
-clicker_instance = clicker(ax, ["points"], markers=["o"])
+# perform skeletonization
+skeleton = skeletonize(image)
 
-# Create a 100x100 grid and initialize the imshow object
-shape_array = np.zeros((100, 100))
-im = ax.imshow(shape_array, extent=(0, 10, 0, 10), origin="lower", cmap="Blues", alpha=0.6, vmin=0, vmax=1)
+# display results
+fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4), sharex=True, sharey=True)
 
-def update_shape(x,y):
-    points = clicker_instance.get_positions()["points"]
+ax = axes.ravel()
 
-    # Clear the shape array
-    shape_array.fill(0)
+ax[0].imshow(image, cmap=plt.cm.gray)
+ax[0].axis('off')
+ax[0].set_title('original', fontsize=20)
 
-    # Add circular regions around points
-    for x, y in points:
-        grid_x, grid_y = np.meshgrid(np.linspace(0, 10, 100), np.linspace(0, 10, 100))
-        mask = np.sqrt((grid_x - x)**2 + (grid_y - y)**2) < 0.5
-        shape_array[mask] = 1
+ax[1].imshow(skeleton, cmap=plt.cm.gray)
+ax[1].axis('off')
+ax[1].set_title('skeleton', fontsize=20)
 
-    # Update imshow
-    im.set_data(shape_array)
-    fig.canvas.draw()
-
-clicker_instance.on_point_added(update_shape)
-
+fig.tight_layout()
 plt.show()
