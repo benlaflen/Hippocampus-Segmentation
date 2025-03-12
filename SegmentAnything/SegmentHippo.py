@@ -74,10 +74,10 @@ def GetComponents(image, threshold, minComponentSize, display=False):
     if display:
         plt.figure(figsize=(10,10))
         plt.imshow(keep_mask, cmap="gray")
-   #     for label_id in large_labels:
-   #         y,x = center_of_mass(labeled_image == label_id)
-   #         plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
-   #                  color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
+        for label_id in large_labels:
+            y,x = center_of_mass(labeled_image == label_id)
+            plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
+                     color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
         plt.axis("off")
         plt.show()
     return keep_mask.astype(np.uint8), labeled_image, large_labels
@@ -97,6 +97,27 @@ def blobbyFilter(mask):
     threshold = (kernel.size // 2)
     return (local_sum > threshold).astype(np.uint8)
 
+def GetClosestComponent(contours, point):
+    best_mask = 0
+    best_dist = -1000000
+    for x in contours.keys():
+        dist = cv2.pointPolygonTest(contours[x][0][0], point, True)
+        if dist > best_dist:
+            best_dist = dist
+            best_mask = x
+    return best_mask
+
+def get_leftmost_white_pixel(mask):
+    white_pixel_indices = np.where(mask == 1)
+
+    if white_pixel_indices[0].size == 0:
+        return None  # No white pixel found
+
+    leftmost_col_index = np.argmin(white_pixel_indices[1])
+    row = white_pixel_indices[0][leftmost_col_index]
+    col = white_pixel_indices[1][leftmost_col_index]
+
+    return (row, col)
 
 
 
@@ -370,13 +391,15 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     #Setup - get contours for all the components
     contours = {}
     for label in labels:
-        contours[label] = cv2.findContours(labeled_image[label].astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        plt.figure(figsize=(10,10))
+        mask = np.where(labeled_image == label, 1,0).astype(np.uint8)
+        contours[label] = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        '''plt.figure(figsize=(10,10))
         canvas = np.zeros_like(im.image)
-        cv2.drawContours(canvas , contours[label][0], -1, (0, 255, 0), 1)
+        print(contours[label][0][0:5])
+        cv2.drawContours(canvas, contours[label][0], -1, (255,255,255), 1)
 
         plt.imshow(canvas)
-        plt.show()
+        plt.show()'''
     
     #First, get the upper and lower farthest left points of the GCL
     x = 0
@@ -387,17 +410,40 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     spots = count_slice_regions(slice_image(left_gcl, x))
     lower = (x, spots[1]+50)
     upper = (x, spots[0]+50)
-    points = [upper, lower]
-    labels = [0, 0]
+    midpoint = ((upper[0]+lower[0])/2, (upper[1]+lower[1])/2)
     #They should each be in or right next to one of our large components - remove those from the list
-
+    best_mask_1 = GetClosestComponent(contours, upper)
+    best_mask_2 = GetClosestComponent(contours, lower)
+    sorted_contours = {k: v for k, v in contours.items() if k not in [best_mask_1, best_mask_2]}
     #Get the midpoint and the component it's closest to
-
+    CA3Label = GetClosestComponent(sorted_contours, midpoint)
+    CA3 = np.where(labeled_image == CA3Label, 1,0)
+    
     #Focusing just on that component, get the farthest over we'll go
+    regions = count_slice_regions(slice_image(CA3, upper[1], 1))
+    if len(regions) > 0:
+        termX = regions[0]
+        points = [upper, lower, midpoint, (termX, upper[1])]
+        labels = [0, 0, 1, 0]
+    else:
+        termX = get_leftmost_white_pixel(CA3)[1]
+        points = [upper, lower, midpoint]
+        labels = [0, 0, 1]
 
     #Now start tracing left from the top point and getting the midpoint in that component
+    x = upper[0]-50
     
-    return
+    while x > termX:
+        regions = count_slice_regions(slice_image(CA3, x, 0))
+        if len(regions) == 0 or regions[-1] < upper[1]:
+            x -= 50
+            continue
+        place = regions[-1]
+        points.extend([(x, place), (x, place - 300), (x, place + 300)])
+        labels.extend([1,0,0])
+        x -= 200
+    mask, score, logit = im.get_best_mask(points=points, labels=labels)
+    im.display(masks=[mask], points=points, labels=labels)
 
 
 #Get central ventricle
