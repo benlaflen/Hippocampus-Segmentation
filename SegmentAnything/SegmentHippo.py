@@ -97,11 +97,13 @@ def blobbyFilter(mask):
     threshold = (kernel.size // 2)
     return (local_sum > threshold).astype(np.uint8)
 
-def GetClosestComponent(contours, point):
+def GetClosestComponent(contours, point, cutoff=-1000000):
+    print(cutoff)
     best_mask = 0
-    best_dist = -1000000
+    best_dist = cutoff
     for x in contours.keys():
         dist = cv2.pointPolygonTest(contours[x][0][0], point, True)
+        print(dist)
         if dist > best_dist:
             best_dist = dist
             best_mask = x
@@ -292,7 +294,7 @@ def slice_image(im, coord, dir=0):
     else:
         return im[coord, :]
 
-def count_slice_regions(slice, disp=False):
+def count_slice_regions(slice, dist=False, disp=False):
     if len(slice.shape) > 1:
         slice = np.mean(slice, 1)
 
@@ -305,12 +307,16 @@ def count_slice_regions(slice, disp=False):
     cutoff = 1.75*np.average(sma)
 
     finalmaxes = []
+    finalsizes = []
     current = -1
+    start = 0
     for x in range(len(sma)):
         if sma[x] < cutoff:
             if current != -1:
                 finalmaxes.append(current)
+                finalsizes.append(x-start)
                 current = -1
+            start = x
         elif x in maximums:
             if current == -1 or sma[x] > sma[current]:
                 current = x
@@ -321,6 +327,8 @@ def count_slice_regions(slice, disp=False):
         for point in finalmaxes:
             plt.plot(point, sma[point], 'bo')
         plt.show()
+    if dist:
+        return finalmaxes, finalsizes
     return finalmaxes
 
 def Get_Left_CA3(im, left_gcl):
@@ -411,12 +419,15 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     lower = (x, spots[1]+50)
     upper = (x, spots[0]+50)
     midpoint = ((upper[0]+lower[0])/2, (upper[1]+lower[1])/2)
+    
     #They should each be in or right next to one of our large components - remove those from the list
     best_mask_1 = GetClosestComponent(contours, upper)
     best_mask_2 = GetClosestComponent(contours, lower)
     sorted_contours = {k: v for k, v in contours.items() if k not in [best_mask_1, best_mask_2]}
     #Get the midpoint and the component it's closest to
-    CA3Label = GetClosestComponent(sorted_contours, midpoint)
+    CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
+    if CA3Label == 0:
+        return None
     CA3 = np.where(labeled_image == CA3Label, 1,0)
     
     #Focusing just on that component, get the farthest over we'll go
@@ -431,23 +442,23 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
         labels = [0, 0, 1]
 
     #Now start tracing left from the top point and getting the midpoint in that component
-    x = upper[0]-50
+    x = upper[0]-200
     
-    while x > termX:
-        regions = count_slice_regions(slice_image(CA3, x, 0))
+    while x > termX+400:
+        regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
         if len(regions) == 0 or regions[-1] < upper[1]:
             x -= 50
             continue
         place = regions[-1]
-        points.extend([(x, place), (x, place - 300), (x, place + 300)])
+        points.extend([(x, place+50), (x, place - (1.5*sizes[-1])+50), (x, place + (1.5*sizes[-1])+50)])
         labels.extend([1,0,0])
-        x -= 200
+        x -= 100
     mask, score, logit = im.get_best_mask(points=points, labels=labels)
-    im.display(masks=[mask], points=points, labels=labels)
+    im.display(masks=[CA3, mask], points=points, labels=labels)
 
 
 #Get central ventricle
-im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
 keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
 
 masks, scores, logits = get_central_ventricle(im)
