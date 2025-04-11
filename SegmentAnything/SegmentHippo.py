@@ -6,7 +6,7 @@ from scipy.signal import argrelextrema, convolve2d
 from skimage.morphology import skeletonize
 from scipy.ndimage import label, center_of_mass, generic_filter
 import matplotlib.pyplot as plt
-from SegmentHippoCenterVentricle import get_central_ventricle
+#from SegmentHippoCenterVentricle import get_central_ventricle
 
 def get_mask_center(mask):
     nz = np.nonzero(mask)
@@ -98,12 +98,10 @@ def blobbyFilter(mask):
     return (local_sum > threshold).astype(np.uint8)
 
 def GetClosestComponent(contours, point, cutoff=-1000000):
-    print(cutoff)
     best_mask = 0
     best_dist = cutoff
     for x in contours.keys():
         dist = cv2.pointPolygonTest(contours[x][0][0], point, True)
-        print(dist)
         if dist > best_dist:
             best_dist = dist
             best_mask = x
@@ -118,6 +116,18 @@ def get_leftmost_white_pixel(mask):
     leftmost_col_index = np.argmin(white_pixel_indices[1])
     row = white_pixel_indices[0][leftmost_col_index]
     col = white_pixel_indices[1][leftmost_col_index]
+
+    return (row, col)
+
+def get_rightmost_white_pixel(mask):
+    white_pixel_indices = np.where(mask == 1)
+
+    if white_pixel_indices[0].size == 0:
+        return None  # No white pixel found
+
+    rightmost_col_index = np.argmax(white_pixel_indices[1])
+    row = white_pixel_indices[0][rightmost_col_index]
+    col = white_pixel_indices[1][rightmost_col_index]
 
     return (row, col)
 
@@ -421,9 +431,9 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     midpoint = ((upper[0]+lower[0])/2, (upper[1]+lower[1])/2)
     
     #They should each be in or right next to one of our large components - remove those from the list
-    best_mask_1 = GetClosestComponent(contours, upper)
-    best_mask_2 = GetClosestComponent(contours, lower)
-    sorted_contours = {k: v for k, v in contours.items() if k not in [best_mask_1, best_mask_2]}
+    best_mask_1_label = GetClosestComponent(contours, upper)
+    best_mask_2_label = GetClosestComponent(contours, lower)
+    sorted_contours = {k: v for k, v in contours.items() if k not in [best_mask_1_label, best_mask_2_label]}
     #Get the midpoint and the component it's closest to
     CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
     if CA3Label == 0:
@@ -453,15 +463,19 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
         points.extend([(x, place+50), (x, place - (1.5*sizes[-1])+50), (x, place + (1.5*sizes[-1])+50)])
         labels.extend([1,0,0])
         x -= 100
-    mask, score, logit = im.get_best_mask(points=points, labels=labels)
-    im.display(masks=[CA3, mask], points=points, labels=labels)
+
+    mask1, score, logit = im.get_best_mask(points=points, labels=labels)
+
+    mask, score, logit = im.get_best_mask(points=points, labels=labels, masks=logit)
+    im.display(masks=[mask1, mask], points=points, labels=labels)
 
 
 #Get central ventricle
 im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
 keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
 
-masks, scores, logits = get_central_ventricle(im)
+masks, scores, logits = im.get_best_mask(points=[(7700,3400), (7700,4200)], labels=[1,1])#get_central_ventricle(im)
+#im.display(masks=masks, points=[(7700,3400), (7700,4200)], labels=[1,1])
 vent_x,vent_y = get_mask_center(masks[0])
 vent_box = get_mask_bounds(masks[0])
 left_gcl = get_left_GCL(im, vent_box, False)
