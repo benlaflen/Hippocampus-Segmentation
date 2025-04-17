@@ -1,4 +1,5 @@
 from SAMethods import SAM_Image, recommended_kwargs
+import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
@@ -27,38 +28,22 @@ def generate_negative_points_outside_center_x(center_y, start_x, end_x, width, n
 
     return negative_points
 
-def get_central_ventricle(im):
+def get_central_ventricle(im, display=False):
     image = im.image
-    # Threshold the image to create a binary image
-    _, binary_image = cv2.threshold(image, 100, 255, cv2.THRESH_BINARY_INV)
-
-    # Create a small, oval-shaped kernel to process the image & clean up noise
+    _, binary_image = cv2.threshold(image, 50, 255, cv2.THRESH_BINARY_INV)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-
-    # Morphological opening to remove the noise and smooth image boundaries
     cleaned_binary = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, kernel)[:,:,0]
 
-    # Get the height and width of the cleaned binary image
     height, width = cleaned_binary.shape
-
-    # Define the center region of the image to focus on for ventricle detection
     center_fraction = 3
-    start_x = width // center_fraction  # Start of the center region
-    end_x = width - width // center_fraction  # End of the center region
-
-    # Crop the binary image & only include the center region
+    start_x = width // center_fraction
+    end_x = width - width // center_fraction
     center_binary = cleaned_binary[:, start_x:end_x]
 
-    # Perform a distance transform to calculate the Euclidean distance to the nearest zero pixel for each pixel
     distance_transform = cv2.distanceTransform(center_binary, cv2.DIST_L2, 5)
-
-    # Find the pixel with the maximum distance in the distance transform
     _, _, _, max_loc = cv2.minMaxLoc(distance_transform)
-
-    # Adjust the coordinates to account for cropping and define the center ventricle point
     center_ventricle = (max_loc[0] + start_x, max_loc[1])
 
-    # Generate a set of negative points for training outside the center region
     negative_points = generate_negative_points_outside_center_x(
         center_y=center_ventricle[1], 
         start_x=start_x, 
@@ -66,13 +51,54 @@ def get_central_ventricle(im):
         width=width,
         num_points=10
     )
-    # Combine positive (center ventricle-related) and negative points with labels
+
     positive_points = [center_ventricle]
     points = positive_points + negative_points
     labels = [1] * len(positive_points) + [0] * len(negative_points)
 
-    # Get the best masks using the points and labels for guidance
-    masks, scores, logits = im.get_best_mask(points, labels)
+    _, _, logits = im.get_best_mask(points, labels)
+    masks, scores, logits = im.get_best_mask(points, labels, logits)
 
-    # Display the resulting masks, labels, and points on the image
-    return masks, scores, logits
+    selected_mask = None
+    for mask in masks:
+        if mask[center_ventricle[1], center_ventricle[0]]:
+            selected_mask = mask
+            break
+
+    if selected_mask is None:
+        selected_mask = masks[0]
+
+    if display:
+        plt.figure(figsize=(10, 10))
+        plt.imshow(image, cmap='gray')
+        plt.imshow(selected_mask, alpha=0.4, cmap='Greens')
+
+        for (x, y), label in zip(points, labels):
+            color = 'green' if label == 1 else 'red'
+            plt.scatter(x, y, c=color, s=50, edgecolors='black')
+
+        plt.title("Center Ventricle Mask")
+        plt.axis('off')
+        plt.show()
+
+    return selected_mask, scores, logits
+
+#Same as in Hilus, we should keep test code in either SegmentHippo or other dedicated test files, because SegmentHippo needs to be able to import these files (without running test code)
+r'''
+from PIL import Image
+import numpy as np
+
+Image.MAX_IMAGE_PIXELS = None
+
+image = Image.open(r'Cage5195087-Mouse3RL\NeuN-s1.tif')
+image_array = np.array(image)
+
+if image_array.dtype == np.uint16 or str(image_array.dtype).startswith('>u2'):
+    image_array = (image_array / 256).astype(np.uint8)
+
+if image_array.ndim == 2:
+    image_array = np.stack([image_array] * 3, axis=-1)  # shape becomes (H, W, 3)
+
+im = SAM_Image(image_array, **recommended_kwargs)
+masks, scores, logits = get_central_ventricle(im)
+'''

@@ -6,7 +6,10 @@ from scipy.signal import argrelextrema, convolve2d
 from skimage.morphology import skeletonize
 from scipy.ndimage import label, center_of_mass, generic_filter
 import matplotlib.pyplot as plt
-#from SegmentHippoCenterVentricle import get_central_ventricle
+from SegmentHippoCenterVentricle import get_central_ventricle
+
+GCL_Threshold = 0.91
+CA3_Threshold = 0.9
 
 def get_mask_center(mask):
     nz = np.nonzero(mask)
@@ -229,15 +232,16 @@ def get_left_GCL(im, vent_box, display_maxes=False):
                 [off, scan[x][2]+(scan[x][2]-scan[x][1])]
             ]
             labels += [1, 1, 0, 0, 0]
-            masks, scores, logits = im.get_best_mask(points, labels)
-            if scores > 0.85:
+            _, _, logits = im.get_best_mask(points, labels)
+            masks, scores, logits = im.get_best_mask(points, labels, logits)
+            if scores > GCL_Threshold:
                 break
             else:
                 print("Too small score: " + str(scores))
             x+=10
         x+=1
 
-    if len(scores)==0 or scores[0] < 0.85:
+    if len(scores)==0 or scores[0] < GCL_Threshold:
         print("No Left GCL Detected!")
         return None
     else:
@@ -278,15 +282,16 @@ def get_right_GCL(im, vent_box, display_maxes=False):
                 [off, scan[x][2]+(scan[x][2]-scan[x][1])]
             ]
             labels += [1, 1, 0, 0, 0]
-            masks, scores, logits = im.get_best_mask(points, labels)
+            _, _, logits = im.get_best_mask(points, labels)
+            masks, scores, logits = im.get_best_mask(points, labels, logits)
     #        im.display(masks=masks, points=points, labels=labels)
-            if scores > 0.85:
+            if scores > GCL_Threshold:
                 break
             else:
                 print("Too small score: " + str(scores))
             x+=10
         x+=1
-    if len(scores)==0 or scores[0] < 0.85:
+    if len(scores)==0 or scores[0] < GCL_Threshold:
         print("No Right GCL Detected!")
         return None
     else:
@@ -424,6 +429,7 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     while len(count_slice_regions(slice_image(left_gcl, x))) != 2 and x < len(left_gcl):
         x+=5
     if x > len(left_gcl):
+        print("Aborted detecting CA3: Malformed Left GCL")
         return None
     spots = count_slice_regions(slice_image(left_gcl, x))
     lower = (x, spots[1]+50)
@@ -437,6 +443,7 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     #Get the midpoint and the component it's closest to
     CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
     if CA3Label == 0:
+        print("No Left CA3 detected")
         return None
     CA3 = np.where(labeled_image == CA3Label, 1,0)
     
@@ -451,45 +458,163 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
         points = [upper, lower, midpoint]
         labels = [0, 0, 1]
 
-    #Now start tracing left from the top point and getting the midpoint in that component
+    #Get a starting avg estimate
     x = upper[0]-200
-    
+    n=0
+    avg = 0
     while x > termX+400:
         regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
+        avg += sizes[-1]
+        n+=1
+        x -= 1000
+    #Now start tracing left from the top point and getting the midpoint in that component
+    x = upper[0]-200
+    avg /= n
+    while x > termX+400:
+        regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
+        avg = ((avg*n) + sizes[-1]) / (n+1)
+        n+=1
         if len(regions) == 0 or regions[-1] < upper[1]:
             x -= 50
             continue
         place = regions[-1]
-        points.extend([(x, place+50), (x, place - (1.5*sizes[-1])+50), (x, place + (1.5*sizes[-1])+50)])
+        points.extend([(x, place+50), (x, place - (1.5*avg)+50), (x, place + (1.5*avg)+50)])
         labels.extend([1,0,0])
         x -= 100
 
-    mask1, score, logit = im.get_best_mask(points=points, labels=labels)
+    mask1, score1, logit = im.get_best_mask(points=points, labels=labels)
+    score = [0]
 
-    mask, score, logit = im.get_best_mask(points=points, labels=labels, masks=logit)
-    im.display(masks=[mask1, mask], points=points, labels=labels)
+    x = 0
+    while score[0] < CA3_Threshold and x < 10:
+        mask, score, logit = im.get_best_mask(points=points, labels=labels, masks=logit)
+        if score[0] < CA3_Threshold:
+            print("Accuracy on left CA3 too small: " + str(score[0]))
+            x += 1
+        if score1 > score[0]:
+            mask = mask1
+            score = [score1]
+            break
+        mask1 = mask
+        score1 = score[0]
+    print("Left CA3 detected with accuracy: " + str(score[0]))
+    #im.display(masks=[mask1, mask], points=points, labels=labels)
+    return mask
+
+def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
+    #Setup - get contours for all the components
+    contours = {}
+    for label in labels:
+        mask = np.where(labeled_image == label, 1,0).astype(np.uint8)
+        contours[label] = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        '''plt.figure(figsize=(10,10))
+        canvas = np.zeros_like(im.image)
+        print(contours[label][0][0:5])
+        cv2.drawContours(canvas, contours[label][0], -1, (255,255,255), 1)
+
+        plt.imshow(canvas)
+        plt.show()'''
+    
+    #First, get the upper and lower farthest left points of the GCL
+    x = len(right_gcl[0])-1
+    while len(count_slice_regions(slice_image(right_gcl, x))) != 2 and x > 0:
+        x-=5
+    if x <= 0:
+        print("Aborted detecting Right CA3: Malformed Right GCL")
+        return None
+    spots = count_slice_regions(slice_image(right_gcl, x))
+    lower = (x, spots[1]+50)
+    upper = (x, spots[0]+50)
+    midpoint = ((upper[0]+lower[0])/2, (upper[1]+lower[1])/2)
+    
+    #They should each be in or right next to one of our large components - remove those from the list
+    best_mask_1_label = GetClosestComponent(contours, upper)
+    best_mask_2_label = GetClosestComponent(contours, lower)
+    sorted_contours = {k: v for k, v in contours.items() if k not in [best_mask_1_label, best_mask_2_label]}
+    #Get the midpoint and the component it's closest to
+    CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
+    if CA3Label == 0:
+        print("No Right CA3 detected")
+        return None
+    CA3 = np.where(labeled_image == CA3Label, 1,0)
+    
+    #Focusing just on that component, get the farthest over we'll go
+    regions = count_slice_regions(slice_image(CA3, upper[1], 1))
+    if len(regions) > 0:
+        termX = regions[-1]
+        points = [upper, lower, midpoint, (termX, upper[1])]
+        labels = [0, 0, 1, 0]
+    else:
+        termX = get_rightmost_white_pixel(CA3)[1]
+        points = [upper, lower, midpoint]
+        labels = [0, 0, 1]
+
+    #Get a starting avg estimate
+    x = upper[0]+200
+    n=0
+    avg = 0
+    while x < termX-400:
+        regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
+        avg += sizes[-1]
+        n+=1
+        x += 1000
+    #Now start tracing left from the top point and getting the midpoint in that component
+    x = upper[0]+200
+    avg /= n
+    while x < termX-400:
+        regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
+        avg = ((avg*n) + sizes[-1]) / (n+1)
+        n+=1
+        if len(regions) == 0 or regions[-1] < upper[1]:
+            x += 50
+            continue
+        place = regions[-1]
+        points.extend([(x, place+50), (x, place - (1.5*avg)+50), (x, place + (1.5*avg)+50)])
+        labels.extend([1,0,0])
+        x += 100
+
+    mask1, score1, logit = im.get_best_mask(points=points, labels=labels)
+    score = [0]
+
+    x = 0
+    while score[0] < CA3_Threshold and x < 10:
+        mask, score, logit = im.get_best_mask(points=points, labels=labels, masks=logit)
+        if score[0] < CA3_Threshold:
+            print("Accuracy on Right CA3 too small: " + str(score[0]))
+            x += 1
+        if score1 > score[0]:
+            mask = mask1
+            score = [score1]
+            break
+        mask1 = mask
+        score1 = score[0]
+    print("Right CA3 detected with accuracy: " + str(score[0]))
+    #im.display(masks=[mask], points=points, labels=labels)
+    return mask
 
 
 #Get central ventricle
-im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
 keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
 
-masks, scores, logits = im.get_best_mask(points=[(7700,3400), (7700,4200)], labels=[1,1])#get_central_ventricle(im)
+masks, scores, logits = get_central_ventricle(im)
 #im.display(masks=masks, points=[(7700,3400), (7700,4200)], labels=[1,1])
-vent_x,vent_y = get_mask_center(masks[0])
-vent_box = get_mask_bounds(masks[0])
+vent_x,vent_y = get_mask_center(masks)
+vent_box = get_mask_bounds(masks)
 left_gcl = get_left_GCL(im, vent_box, False)
 right_gcl = get_right_GCL(im, vent_box, False)
-masks = [masks[0]]
+masks = [masks]
 points = []
 labels = []
 if left_gcl is not None:
     masks.append(left_gcl)
-if right_gcl is not None:
-    masks.append(right_gcl)
-if left_gcl is not None:
-    #left_ca3 = Get_Left_CA3(im, left_gcl)
     left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels)
     if left_ca3 is not None:
         masks.append(left_ca3)
-# im.display(masks=masks, points=points, labels=labels)"""
+if right_gcl is not None:
+    masks.append(right_gcl)
+    right_ca3 = Get_Right_CA3_Method_2(im, right_gcl, labeled_image, component_labels)
+    if right_ca3 is not None:
+        masks.append(right_ca3)
+    
+im.display(masks=masks, points=points, labels=labels)
