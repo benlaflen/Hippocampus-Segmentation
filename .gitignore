@@ -5,3 +5,4 @@ SegmentAnything/vit_l.pt
 __pycache__/*.*
 */__pycache__/*.*
 Training-Database/*/*
+TestData/*

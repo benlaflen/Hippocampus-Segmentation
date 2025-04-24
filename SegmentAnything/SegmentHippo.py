@@ -203,14 +203,14 @@ def get_bright_lines(im, vent_box, display_maxes=False):
         plt.plot([edge[0][0], edge[1][0]], [-edge[0][1], -edge[1][1]] )
     plt.show()
 
-def get_left_GCL(im, vent_box, display_maxes=False):
+def get_left_GCL(im, vent_box, display_maxes=False, display=False):
     scan = []
     store_points = []
     labels = []
     step = 160
     for x in range(step):
         target_x = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
-        maximums = get_verticle_maxima(target_x, im)
+        maximums = get_verticle_maxima(target_x, im, disp=True)
         scan.append(maximums)
         for y in maximums:
             store_points.append([target_x, y])
@@ -250,7 +250,8 @@ def get_left_GCL(im, vent_box, display_maxes=False):
             for x in range(len(store_points)):
                 points.append(store_points[x])
                 labels.append(1)
-        #im.display(masks=masks, points=points, labels=labels)
+        if display:
+            im.display(masks=masks, points=points, labels=labels)
         return masks[0]
 
 def get_right_GCL(im, vent_box, display_maxes=False):
@@ -410,7 +411,7 @@ def Get_Left_CA3(im, left_gcl):
     im.display(points=points, labels=labels,masks=[mask])
     return mask
 
-def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
+def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels, display=False):
     #Setup - get contours for all the components
     contours = {}
     for label in labels:
@@ -464,15 +465,18 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
     avg = 0
     while x > termX+400:
         regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
-        avg += sizes[-1]
+        if len(sizes) > 0:
+            avg += sizes[-1]
         n+=1
         x -= 1000
     #Now start tracing left from the top point and getting the midpoint in that component
-    x = upper[0]-200
-    avg /= n
+    if n > 0:
+        x = upper[0]-200
+        avg /= n
     while x > termX+400:
         regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
-        avg = ((avg*n) + sizes[-1]) / (n+1)
+        if len(sizes) > 0:
+            avg = ((avg*n) + sizes[-1]) / (n+1)
         n+=1
         if len(regions) == 0 or regions[-1] < upper[1]:
             x -= 50
@@ -498,7 +502,8 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels):
         mask1 = mask
         score1 = score[0]
     print("Left CA3 detected with accuracy: " + str(score[0]))
-    #im.display(masks=[mask1, mask], points=points, labels=labels)
+    if display:
+        im.display(masks=[mask1, mask], points=points, labels=labels)
     return mask
 
 def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
@@ -555,15 +560,18 @@ def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
     avg = 0
     while x < termX-400:
         regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
-        avg += sizes[-1]
+        if len(sizes) > 0:
+            avg += sizes[-1]
         n+=1
         x += 1000
     #Now start tracing left from the top point and getting the midpoint in that component
-    x = upper[0]+200
-    avg /= n
+    if n > 0:
+        x = upper[0]+200
+        avg /= n
     while x < termX-400:
         regions, sizes = count_slice_regions(slice_image(CA3, x, 0), True)
-        avg = ((avg*n) + sizes[-1]) / (n+1)
+        if len(sizes) > 0:
+            avg = ((avg*n) + sizes[-1]) / (n+1)
         n+=1
         if len(regions) == 0 or regions[-1] < upper[1]:
             x += 50
@@ -592,23 +600,28 @@ def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
     #im.display(masks=[mask], points=points, labels=labels)
     return mask
 
+def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3):
+    inverted_image = cv2.bitwise_not(im.image)
+
+
 
 #Get central ventricle
-im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
-keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
+keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, True)
 
-masks, scores, logits = get_central_ventricle(im)
+masks, scores, logits = get_central_ventricle(im, display=False)
+#masks, scores, logits = im.get_best_mask(points=[(10800, 2200)], labels=[1])
 #im.display(masks=masks, points=[(7700,3400), (7700,4200)], labels=[1,1])
 vent_x,vent_y = get_mask_center(masks)
 vent_box = get_mask_bounds(masks)
-left_gcl = get_left_GCL(im, vent_box, False)
+left_gcl = get_left_GCL(im, vent_box, display=False)
 right_gcl = get_right_GCL(im, vent_box, False)
 masks = [masks]
 points = []
 labels = []
 if left_gcl is not None:
     masks.append(left_gcl)
-    left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels)
+    left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels, display=False)
     if left_ca3 is not None:
         masks.append(left_ca3)
 if right_gcl is not None:

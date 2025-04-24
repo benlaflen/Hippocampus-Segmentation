@@ -60,7 +60,7 @@ def on_key(event):
 for filename in os.listdir(input_folder):
     if filename[0] == '.' or splitext(filename)[0] in os.listdir(output_folder):
         continue
-    im = SAM_Image(join(input_folder,filename), **recommended_kwargs)
+    im = SAM_Image.from_path(join(input_folder,filename), **recommended_kwargs)
     masks = []
     package = []
     for comp in ["Central Ventricle", "Left GCL", "Left Hilus", "Left CA3", "Left DG", "Right GCL", "Right Hilus", "Right CA3", "Right DG"]:
