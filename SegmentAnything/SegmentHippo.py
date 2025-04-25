@@ -59,6 +59,15 @@ def ColumnBinarization(image, threshold): #0.2 for detecting blood vessels, #0.8
     binary_image = image >= thresholds*threshold*2
     return binary_image.astype(np.uint8)
 
+def EqualizeImage(image):
+    if image.ndim == 3:
+        image = np.mean(image, axis=2)
+    col_maxes = np.max(image)
+    correction = col_maxes#[None, :]
+    image = image.astype(np.float32)
+    image = (image / correction*256).clip(0,255)
+    return np.repeat(image[:, :, np.newaxis], 3, axis=2).astype(np.uint8)
+
 def Threshold(image, threshold):
     if image.ndim == 3:
         image = np.mean(image, axis=2)
@@ -210,7 +219,7 @@ def get_left_GCL(im, vent_box, display_maxes=False, display=False):
     step = 160
     for x in range(step):
         target_x = int(vent_box[0]-((0.2+((0.6/step)*x))*vent_box[0]))
-        maximums = get_verticle_maxima(target_x, im, disp=True)
+        maximums = get_verticle_maxima(target_x, im, disp=False)
         scan.append(maximums)
         for y in maximums:
             store_points.append([target_x, y])
@@ -607,7 +616,9 @@ def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3):
 
 #Get central ventricle
 im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
-keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, True)
+better_image = EqualizeImage(im.image)
+im = SAM_Image(better_image, **recommended_kwargs)
+keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
 
 masks, scores, logits = get_central_ventricle(im, display=False)
 #masks, scores, logits = im.get_best_mask(points=[(10800, 2200)], labels=[1])
