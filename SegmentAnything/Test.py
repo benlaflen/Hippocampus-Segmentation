@@ -56,7 +56,7 @@ for i, (mask, score) in enumerate(zip(masks, scores)):
     plt.imshow(image)
     show_mask(mask, plt.gca())
     show_points(input_point, input_label, plt.gca())
-    show_box(input_box, plt.gca())
+    #show_box(input_box, plt.gca())
     plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
     plt.axis('off')
     plt.show()  

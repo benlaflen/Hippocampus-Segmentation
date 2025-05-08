@@ -1,8 +1,13 @@
 import numpy as np
 from SAMethods import SAM_Image, recommended_kwargs
+from SegmentHippoCenterVentricle import get_central_ventricle
 from SegmentHippo import get_left_GCL, get_right_GCL
 import matplotlib.pyplot as plt
+import cv2
 
+def get_mask_center(mask):
+    nz = np.nonzero(mask)
+    return np.average(nz[1]), np.average(nz[0])
 
 def get_mask_bounds(mask):
     nz = np.nonzero(mask)
@@ -13,7 +18,7 @@ def find_bottom_and_center_points(mask, ventricle_box):
     y_coords, x_coords = np.where(mask)
     mask_points = np.array(list(zip(x_coords, y_coords)))
 
-    bottommost_idx = np.argmax(mask_points[:, 1])  # Largest y-coordinate
+    bottommost_idx = np.argmax(mask_points[: 1])  # Largest y-coordinate
     bottommost_point = tuple(mask_points[bottommost_idx])
 
     center_x = (ventricle_box[0] + ventricle_box[2]) // 2
@@ -103,7 +108,7 @@ def create_sam_mask_for_gcl(im, ventricle_box, mask, num_negative_points=20):
     positive_points = [
         midpoint_between_middle_points,
         intermediate_point,
-        # ca3_border_point,
+        ca3_border_point,
     ]
     positive_points = [p for p in positive_points if p is not None]
 
@@ -134,10 +139,31 @@ def display_sam_mask(im, masks, points, labels, title="SAM Mask with Points"):
     plt.legend(["Positive Points", "Negative Points"])
     plt.show()
 
-
+#We shouldn't have test code in files that need to be imported. If we import this right now, we end up running all this test code unintentionally. This would be better placed in a dedicated test file that imports this file. Similarly, this file can't import SegmentHippo because SegmentHippo needs to import this file.
+r'''
 # Main Script
-im = SAM_Image(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
-masks, scores, logits = im.get_best_mask([[9600, 2600], [11300, 2600]], [1, 1])
+
+from PIL import Image
+import numpy as np
+
+Image.MAX_IMAGE_PIXELS = None  # prevent decompression warning
+
+# Load and convert the image properly
+image = Image.open(r'Cage5195087-Mouse3RL\NeuN-s1.tif')
+image_array = np.array(image)
+
+# Convert 16-bit to 8-bit if needed
+if image_array.dtype == np.uint16 or str(image_array.dtype).startswith('>u2'):
+    image_array = (image_array / 256).astype(np.uint8)
+
+# Convert grayscale to RGB
+if image_array.ndim == 2:
+    image_array = np.stack([image_array] * 3, axis=-1)  # (H, W) → (H, W, 3)
+
+# ✅ Now pass the array instead of the string
+im = SAM_Image(image_array, **recommended_kwargs)
+masks, scores, logits = get_central_ventricle(im)
+vent_x,vent_y = get_mask_center(masks[0])
 ventricle_box = get_mask_bounds(masks[0])
 
 # Process Left GCL
@@ -146,7 +172,7 @@ if left_gcl_mask is not None:
     left_masks, left_scores, left_logits, left_points, left_labels = create_sam_mask_for_gcl(
         im, ventricle_box, left_gcl_mask, num_negative_points=20
     )
-    display_sam_mask(im, left_masks, left_points, left_labels, title="Left GCL SAM Mask")
+    display_sam_mask(im, left_masks, left_points, left_labels, title="Left Hilus SAM Mask")
 
 # Process Right GCL
 right_gcl_mask = get_right_GCL(im, ventricle_box, False)
@@ -154,6 +180,7 @@ if right_gcl_mask is not None:
     right_masks, right_scores, right_logits, right_points, right_labels = create_sam_mask_for_gcl(
         im, ventricle_box, right_gcl_mask, num_negative_points=20
     )
-    display_sam_mask(im, right_masks, right_points, right_labels, title="Right GCL SAM Mask")
+    display_sam_mask(im, right_masks, right_points, right_labels, title="Right Hilus SAM Mask")
 else:
     print("No GCL mask detected.")
+'''

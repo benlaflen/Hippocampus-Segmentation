@@ -10,6 +10,7 @@ from SegmentHippoCenterVentricle import get_central_ventricle
 
 GCL_Threshold = 0.91
 CA3_Threshold = 0.9
+Hilus_Threshold=0.92
 
 def get_mask_center(mask):
     nz = np.nonzero(mask)
@@ -62,7 +63,7 @@ def ColumnBinarization(image, threshold): #0.2 for detecting blood vessels, #0.8
 def EqualizeImage(image):
     if image.ndim == 3:
         image = np.mean(image, axis=2)
-    col_maxes = np.max(image)
+    col_maxes = np.max(image)#, axis=0)
     correction = col_maxes#[None, :]
     image = image.astype(np.float32)
     image = (image / correction*256).clip(0,255)
@@ -609,13 +610,96 @@ def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
     #im.display(masks=[mask], points=points, labels=labels)
     return mask
 
-def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3):
+def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3, display=False):
     inverted_image = cv2.bitwise_not(im.image)
+    combined_mask = (left_gcl | left_ca3)
+    print(combined_mask.shape)
+    print(inverted_image.shape)
+    inverted_image[combined_mask] = [0,0,0]
+    _, xs = np.where(left_gcl)
+    x = xs.min()
+    points = []
+    labels = []
+    while x<xs.max():
+        gcl = count_slice_regions(slice_image(left_gcl, x))
+        for point in gcl:
+            points.append((x, point+50))
+            labels.append(0)
+        ca3 = count_slice_regions(slice_image(left_ca3, x))
+        for point in ca3:
+            points.append((x, point+50))
+            labels.append(0)
+        if len(gcl) == 2 and len(ca3) == 0 and not left_gcl[int((gcl[0]+gcl[1]+100)/2)][x]:
+            points.append((x, int((gcl[0]+gcl[1]+100)/2)))
+            labels.append(1)
+        x+=100
+    new_im = SAM_Image(inverted_image, **recommended_kwargs)
+    mask1, score1, logit = new_im.get_best_mask(points=points, labels=labels)
+    score = [0]
 
+    x = 0
+    while score[0] < Hilus_Threshold and x < 10:
+        mask, score, logit = new_im.get_best_mask(points=points, labels=labels, masks=logit)
+        if score[0] < Hilus_Threshold:
+            print("Accuracy on left Hilus too small: " + str(score[0]))
+            x += 1
+        if score1 > score[0]:
+            mask = mask1
+            score = [score1]
+            break
+        mask1 = mask
+        score1 = score[0]
+    print("Left Hilus detected with accuracy: " + str(score[0]))
+    if display:
+        new_im.display(masks=[mask], points=points, labels=labels)
+    return mask
 
+def Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False):
+    inverted_image = cv2.bitwise_not(im.image)
+    combined_mask = (right_gcl | right_ca3)
+    print(combined_mask.shape)
+    print(inverted_image.shape)
+    inverted_image[combined_mask] = [0,0,0]
+    _, xs = np.where(right_gcl)
+    x = xs.min()
+    points = []
+    labels = []
+    while x<xs.max():
+        gcl = count_slice_regions(slice_image(right_gcl, x))
+        for point in gcl:
+            points.append((x, point+50))
+            labels.append(0)
+        ca3 = count_slice_regions(slice_image(right_ca3, x))
+        for point in ca3:
+            points.append((x, point+50))
+            labels.append(0)
+        if len(gcl) == 2 and len(ca3) == 0 and not right_gcl[int((gcl[0]+gcl[1]+100)/2)][x]:
+            points.append((x, int((gcl[0]+gcl[1]+100)/2)))
+            labels.append(1)
+        x+=100
+    new_im = SAM_Image(inverted_image, **recommended_kwargs)
+    mask1, score1, logit = new_im.get_best_mask(points=points, labels=labels)
+    score = [0]
+
+    x = 0
+    while score[0] < Hilus_Threshold and x < 10:
+        mask, score, logit = new_im.get_best_mask(points=points, labels=labels, masks=logit)
+        if score[0] < Hilus_Threshold:
+            print("Accuracy on right Hilus too small: " + str(score[0]))
+            x += 1
+        if score1 > score[0]:
+            mask = mask1
+            score = [score1]
+            break
+        mask1 = mask
+        score1 = score[0]
+    print("Right Hilus detected with accuracy: " + str(score[0]))
+    if display:
+        new_im.display(masks=[mask], points=points, labels=labels)
+    return mask
 
 #Get central ventricle
-im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s1.tif', **recommended_kwargs)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
 better_image = EqualizeImage(im.image)
 im = SAM_Image(better_image, **recommended_kwargs)
 keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
@@ -632,13 +716,19 @@ points = []
 labels = []
 if left_gcl is not None:
     masks.append(left_gcl)
-    left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels, display=False)
+    left_ca3 = Get_Left_CA3_Method_2(im, left_gcl, labeled_image, component_labels, display=False)[0]
     if left_ca3 is not None:
         masks.append(left_ca3)
+        left_hilus = Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3, display=False)
+        if left_hilus is not None:
+            masks.append(left_hilus)
 if right_gcl is not None:
     masks.append(right_gcl)
-    right_ca3 = Get_Right_CA3_Method_2(im, right_gcl, labeled_image, component_labels)
+    right_ca3 = Get_Right_CA3_Method_2(im, right_gcl, labeled_image, component_labels)[0]
     if right_ca3 is not None:
         masks.append(right_ca3)
+        right_hilus = Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False)
+        if right_hilus is not None:
+            masks.append(right_hilus)
     
 im.display(masks=masks, points=points, labels=labels)
