@@ -10,7 +10,7 @@ from SegmentHippoCenterVentricle import get_central_ventricle
 
 GCL_Threshold = 0.91
 CA3_Threshold = 0.9
-Hilus_Threshold=0.92
+Hilus_Threshold=0.9
 
 def get_mask_center(mask):
     nz = np.nonzero(mask)
@@ -84,6 +84,29 @@ def GetComponents(image, threshold, minComponentSize, display=False):
     large_labels = large_labels[large_labels != 0]
 
     keep_mask = np.isin(labeled_image, large_labels)
+    if display:
+        plt.figure(figsize=(10,10))
+        plt.imshow(keep_mask, cmap="gray")
+        for label_id in large_labels:
+            y,x = center_of_mass(labeled_image == label_id)
+            plt.text(x,y, f"{label_id}\n{component_sizes[label_id]}",
+                     color="red", fontsize=8, ha="center", va="center", bbox=dict(facecolor="white", alpha=0.7, edgecolor="none"))
+        plt.axis("off")
+        plt.show()
+    return keep_mask.astype(np.uint8), labeled_image, large_labels
+
+def GetComponentsInRange(image, threshold, minComponentSize, maxComponentSize, display=False):
+    binary_image = ColumnBinarization(image, threshold)
+    inverted_image = 1-binary_image
+
+    labeled_image, num_components = label(inverted_image)
+    component_sizes = np.bincount(labeled_image.ravel())
+
+    large_labels = np.where((component_sizes <= maxComponentSize) & (component_sizes >= minComponentSize))[0]
+    large_labels = large_labels[large_labels != 0]
+
+    keep_mask = np.isin(labeled_image, large_labels)
+    print("Num small labels: " + str(len(large_labels)))
     if display:
         plt.figure(figsize=(10,10))
         plt.imshow(keep_mask, cmap="gray")
@@ -441,7 +464,7 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels, display=False):
         x+=5
     if x > len(left_gcl):
         print("Aborted detecting CA3: Malformed Left GCL")
-        return None
+        return [None]
     spots = count_slice_regions(slice_image(left_gcl, x))
     lower = (x, spots[1]+50)
     upper = (x, spots[0]+50)
@@ -455,7 +478,7 @@ def Get_Left_CA3_Method_2(im, left_gcl, labeled_image, labels, display=False):
     CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
     if CA3Label == 0:
         print("No Left CA3 detected")
-        return None
+        return [None]
     CA3 = np.where(labeled_image == CA3Label, 1,0)
     
     #Focusing just on that component, get the farthest over we'll go
@@ -536,7 +559,7 @@ def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
         x-=5
     if x <= 0:
         print("Aborted detecting Right CA3: Malformed Right GCL")
-        return None
+        return [None]
     spots = count_slice_regions(slice_image(right_gcl, x))
     lower = (x, spots[1]+50)
     upper = (x, spots[0]+50)
@@ -550,7 +573,7 @@ def Get_Right_CA3_Method_2(im, right_gcl, labeled_image, labels):
     CA3Label = GetClosestComponent(sorted_contours, midpoint, cutoff=-abs(upper[1]-lower[1]))
     if CA3Label == 0:
         print("No Right CA3 detected")
-        return None
+        return [None]
     CA3 = np.where(labeled_image == CA3Label, 1,0)
     
     #Focusing just on that component, get the farthest over we'll go
@@ -618,17 +641,31 @@ def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3, display=False):
     inverted_image[combined_mask] = [0,0,0]
     _, xs = np.where(left_gcl)
     x = xs.min()
+    buffer = 0
     points = []
     labels = []
-    while x<xs.max():
+    while x<xs.max()+5:
         gcl = count_slice_regions(slice_image(left_gcl, x))
         for point in gcl:
             points.append((x, point+50))
+            labels.append(0)
+        if len(gcl) == 2:
+            points.append((x, gcl[0]-150))
+            labels.append(0)
+            points.append((x, gcl[1]+200))
             labels.append(0)
         ca3 = count_slice_regions(slice_image(left_ca3, x))
         for point in ca3:
             points.append((x, point+50))
             labels.append(0)
+            if len(gcl) == 1:
+                points.append((x, (point+gcl[0]+100)/2))
+                labels.append(0)
+            elif len(gcl) == 0:
+                points.append((x, point-150))
+                labels.append(0)
+                points.append((x, point+200))
+                labels.append(0)
         if len(gcl) == 2 and len(ca3) == 0 and not left_gcl[int((gcl[0]+gcl[1]+100)/2)][x]:
             points.append((x, int((gcl[0]+gcl[1]+100)/2)))
             labels.append(1)
@@ -640,7 +677,7 @@ def Get_Left_Hilus_W_CA3(im, left_gcl, left_ca3, display=False):
     x = 0
     while score[0] < Hilus_Threshold and x < 10:
         mask, score, logit = new_im.get_best_mask(points=points, labels=labels, masks=logit)
-        if score[0] < Hilus_Threshold:
+        if score[0] < Hilus_Threshold+0.03:
             print("Accuracy on left Hilus too small: " + str(score[0]))
             x += 1
         if score1 > score[0]:
@@ -664,15 +701,29 @@ def Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False):
     x = xs.min()
     points = []
     labels = []
-    while x<xs.max():
+    buffer = 0
+    while x<xs.max()+5:
         gcl = count_slice_regions(slice_image(right_gcl, x))
         for point in gcl:
             points.append((x, point+50))
+            labels.append(0)
+        if len(gcl) == 2:
+            points.append((x, gcl[0]-150))
+            labels.append(0)
+            points.append((x, gcl[1]+200))
             labels.append(0)
         ca3 = count_slice_regions(slice_image(right_ca3, x))
         for point in ca3:
             points.append((x, point+50))
             labels.append(0)
+            if len(gcl) == 1:
+                points.append((x, (point+gcl[0]+100)/2))
+                labels.append(0)
+            elif len(gcl) == 0:
+                points.append((x, point-150))
+                labels.append(0)
+                points.append((x, point+200))
+                labels.append(0)
         if len(gcl) == 2 and len(ca3) == 0 and not right_gcl[int((gcl[0]+gcl[1]+100)/2)][x]:
             points.append((x, int((gcl[0]+gcl[1]+100)/2)))
             labels.append(1)
@@ -684,7 +735,7 @@ def Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False):
     x = 0
     while score[0] < Hilus_Threshold and x < 10:
         mask, score, logit = new_im.get_best_mask(points=points, labels=labels, masks=logit)
-        if score[0] < Hilus_Threshold:
+        if score[0] < Hilus_Threshold+0.03:
             print("Accuracy on right Hilus too small: " + str(score[0]))
             x += 1
         if score1 > score[0]:
@@ -698,8 +749,11 @@ def Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False):
         new_im.display(masks=[mask], points=points, labels=labels)
     return mask
 
+def Get_Left_DG(im):
+    keep_mask, labeled_image, component_labels = GetComponentsInRange(im.image, 0.2, 2000, 6000, True)
+
 #Get central ventricle
-im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s2.tif', **recommended_kwargs)
+im = SAM_Image.from_path(r'Cage5195087-Mouse3RL\NeuN-s3.tif', **recommended_kwargs)
 better_image = EqualizeImage(im.image)
 im = SAM_Image(better_image, **recommended_kwargs)
 keep_mask, labeled_image, component_labels = GetComponents(im.image, 0.8, 100000, False)
@@ -709,7 +763,8 @@ masks, scores, logits = get_central_ventricle(im, display=False)
 #im.display(masks=masks, points=[(7700,3400), (7700,4200)], labels=[1,1])
 vent_x,vent_y = get_mask_center(masks)
 vent_box = get_mask_bounds(masks)
-left_gcl = get_left_GCL(im, vent_box, display=False)
+Get_Left_DG(im)
+"""left_gcl = get_left_GCL(im, vent_box, display=False)
 right_gcl = get_right_GCL(im, vent_box, False)
 masks = [masks]
 points = []
@@ -729,6 +784,6 @@ if right_gcl is not None:
         masks.append(right_ca3)
         right_hilus = Get_Right_Hilus_W_CA3(im, right_gcl, right_ca3, display=False)
         if right_hilus is not None:
-            masks.append(right_hilus)
-    
-im.display(masks=masks, points=points, labels=labels)
+            masks.append(right_hilus)"""
+
+#im.display(masks=masks, points=points, labels=labels)
